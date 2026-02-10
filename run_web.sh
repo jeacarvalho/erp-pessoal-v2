@@ -15,4 +15,4 @@ if ! python3 -c "import flet" 2>/dev/null; then
 fi
 
 echo "✨ Abrindo interface..."
-python3 -m app.main
+python3 -m app.main_web
