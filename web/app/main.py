@@ -33,13 +33,33 @@ class ERPApp:
         self.content_area: Optional[ft.Container] = None
         
         # Cliente HTTP
-        self.http_client = httpx.Client(base_url=BACKEND_URL, timeout=30.0)
+        self.http_client = httpx.Client(base_url=BACKEND_URL, timeout=5.0)
         
         # Dados em cache
         self.categories: List[Dict[str, Any]] = []
         self.fiscal_items: List[Dict[str, Any]] = []
         
+        # Verifica se o backend está disponível antes de iniciar a UI
+        if not self.check_backend_health():
+            print("ERRO: Backend não está respondendo. Verifique se o servidor está rodando em http://localhost:8000")
+            self.page.add(
+                ft.Column([
+                    ft.Text("Backend não está disponível!", style="headlineMedium", color="red"),
+                    ft.Text(f"Verifique se o servidor está rodando em {BACKEND_URL}/docs", style="bodyLarge"),
+                ])
+            )
+            return
+            
         self.setup_ui()
+
+    def check_backend_health(self) -> bool:
+        """Verifica se o backend está saudável."""
+        try:
+            response = self.http_client.get("/docs")  # Endpoint padrão do FastAPI
+            return response.status_code == 200
+        except Exception as e:
+            print(f"Erro ao verificar saúde do backend: {e}")
+            return False
 
     def setup_ui(self):
         """Configura a interface principal."""
