@@ -234,54 +234,109 @@ class RJSefazNFCeAdapter(BaseSefazAdapter):
     def _extract_items(self, soup: BeautifulSoup) -> List[ParsedItem]:
         items: List[ParsedItem] = []
 
-        # Estratégia baseada em texto global: no layout do RJ o nome do item
-        # costuma vir numa linha e, logo abaixo, uma linha com:
-        # "Qtde:1   UN: UN   Vl. Unit.: 7,99   Vl. Total 7,99"
+        # Estratégia baseada em texto global: no layout do RJ, os dados estão
+        # organizados em linhas separadas sequenciais
         full_text = soup.get_text("\n", strip=True)
         print("[RJ-Adapter] Texto completo (primeiras 500 chars):")
         print(full_text[:500])
         lines = [ln.strip() for ln in full_text.splitlines() if ln.strip()]
         print(f"[RJ-Adapter] Total de linhas: {len(lines)}")
 
-        detail_pattern = re.compile(
-            r"Qtde:(?P<qty>[\d\.,]+).*?UN:\s*(?P<unit>[A-Za-z]+).*?"
-            r"Vl\. Unit\.[: ]\s*(?P<unit_price>[\d\.,]+).*?"
-            r"Vl\. Total\s*(?P<total_price>[\d\.,]+)",
-            re.IGNORECASE,
-        )
+        def _to_float(value: str) -> float:
+            return float(value.replace(".", "").replace(",", "."))
 
         i = 0
         while i < len(lines):
             line = lines[i]
-            if "Qtde:" in line or "Vl. Unit." in line:
-                print(f"[RJ-Adapter] Linha candidata #{i}: {line}")
-            match = detail_pattern.search(line)
-            if not match:
-                i += 1
-                continue
-
-            # Nome do produto: linha imediatamente anterior, quando existir.
-            name = lines[i - 1] if i > 0 else ""
-
-            def _to_float(value: str) -> float:
-                return float(value.replace(".", "").replace(",", "."))
-
-            qty = _to_float(match.group("qty"))
-            unit_price = _to_float(match.group("unit_price"))
-            total_price = _to_float(match.group("total_price"))
-            unit = match.group("unit")
-
-            if name:
-                items.append(
-                    ParsedItem(
-                        name=name,
-                        quantity=qty,
-                        unit=unit,
-                        unit_price=unit_price,
-                        total_price=total_price,
-                    )
-                )
-
+            
+            # Procura por linhas que contêm "Qtde.:" ou "Qtde:"
+            if re.match(r"Qtde\.?:", line, re.IGNORECASE):
+                print(f"[RJ-Adapter] Encontrado início de item na linha #{i}: {line}")
+                
+                # Tenta extrair os dados das próximas linhas
+                try:
+                    # Linha atual pode ter "Qtde.:" ou só o valor na próxima
+                    if ":" in line and len(line) > 6:
+                        # Formato: "Qtde.: 1" ou "Qtde.:1"
+                        qty_text = line.split(":", 1)[1].strip()
+                        next_line_offset = 1
+                    else:
+                        # Formato: linha com "Qtde.:" e valor na próxima linha
+                        qty_text = lines[i + 1] if i + 1 < len(lines) else "0"
+                        next_line_offset = 2
+                    
+                    # Busca UN:, Vl. Unit.:, Vl. Total nas próximas linhas
+                    unit = ""
+                    unit_price = 0.0
+                    total_price = 0.0
+                    name = ""
+                    
+                    # Nome do produto: algumas linhas antes (ignora códigos e linhas especiais)
+                    for j in range(max(0, i - 8), i):
+                        candidate = lines[j]
+                        # Ignora linhas com "Código:", "Clear text", números puros, etc.
+                        if candidate and len(candidate) > 3:
+                            # Pula linhas que são apenas números (códigos)
+                            if candidate.isdigit():
+                                continue
+                            # Pula linhas especiais
+                            if any(x in candidate for x in ["Código", "Clear text", "(Código"]):
+                                continue
+                            # Pula linhas com palavras-chave de campos
+                            if any(x in candidate.lower() for x in ["qtde", "vl.", "un:", "cnpj", "documento auxiliar", ")"]):
+                                continue
+                            # Aceita apenas se tem letras (não só números e símbolos)
+                            if any(c.isalpha() for c in candidate):
+                                name = candidate
+                                break
+                    
+                    # Procura os outros campos nas próximas 10 linhas
+                    for j in range(i + next_line_offset, min(i + 15, len(lines))):
+                        current = lines[j]
+                        
+                        if re.match(r"UN:", current, re.IGNORECASE):
+                            # Próxima linha tem a unidade
+                            if j + 1 < len(lines):
+                                unit = lines[j + 1]
+                        
+                        elif re.match(r"Vl\.?\s*Unit\.?:", current, re.IGNORECASE):
+                            # Próxima linha tem o preço unitário
+                            if j + 1 < len(lines):
+                                try:
+                                    unit_price = _to_float(lines[j + 1])
+                                except:
+                                    pass
+                        
+                        elif re.match(r"Vl\.?\s*Total", current, re.IGNORECASE):
+                            # Próxima linha tem o total
+                            if j + 1 < len(lines):
+                                try:
+                                    total_price = _to_float(lines[j + 1])
+                                except:
+                                    pass
+                            break  # Fim dos dados deste item
+                    
+                    # Converte quantidade
+                    try:
+                        qty = _to_float(qty_text)
+                    except:
+                        qty = 0.0
+                    
+                    if name and qty > 0:
+                        print(f"[RJ-Adapter] Item encontrado: {name} - Qtd: {qty}, Unit: {unit}, Preço Unit: {unit_price}, Total: {total_price}")
+                        items.append(
+                            ParsedItem(
+                                name=name,
+                                quantity=qty,
+                                unit=unit or "UN",
+                                unit_price=unit_price,
+                                total_price=total_price,
+                            )
+                        )
+                
+                except Exception as e:
+                    print(f"[RJ-Adapter] Erro ao processar item: {e}")
+            
             i += 1
 
         if not items:

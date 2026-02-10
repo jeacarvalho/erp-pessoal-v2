@@ -9,6 +9,9 @@ def test_xml_processor_parses_quantity_and_unit_price_separately() -> None:
     xml_content = """
     <NFe>
       <infNFe Id="NFe123">
+        <ide>
+          <dhEmi>2024-01-15T10:30:00-03:00</dhEmi>
+        </ide>
         <emit>
           <xNome>Supermercado Exemplo</xNome>
         </emit>
