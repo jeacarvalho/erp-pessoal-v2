@@ -1,4 +1,26 @@
-.env
+```
+# Python
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.py~
+*.py.class
+*.py.backup
+*.swp
+*.swo
+
+# Logs
+*.log
+server.log
+
+# Database
+app.db
+
+# Environment
+.env
+.env.local
+.env.*
 .venv/
-*.db
+venv/
+```
