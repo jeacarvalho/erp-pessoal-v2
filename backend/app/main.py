@@ -252,5 +252,39 @@ def import_url(
     }
 
 
+@app.get("/fiscal-items")
+def list_fiscal_items(
+    limit: int = Query(default=50, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> List[dict]:
+    """Lista os itens fiscais mais recentes das notas importadas."""
+    
+    stmt = (
+        select(FiscalItem, FiscalNote)
+        .join(FiscalNote, FiscalItem.note_id == FiscalNote.id)
+        .order_by(FiscalNote.date.desc(), FiscalItem.id.desc())
+        .limit(limit)
+    )
+    
+    result = db.execute(stmt)
+    rows = result.all()
+    
+    items = []
+    for fiscal_item, fiscal_note in rows:
+        items.append({
+            "id": fiscal_item.id,
+            "product_name": fiscal_item.product_name,
+            "quantity": fiscal_item.quantity,
+            "unit_price": fiscal_item.unit_price,
+            "total_price": fiscal_item.total_price,
+            "category_id": fiscal_item.category_id,
+            "note_id": fiscal_note.id,
+            "note_date": fiscal_note.date.isoformat(),
+            "seller_name": fiscal_note.seller_name,
+        })
+    
+    return items
+
+
 __all__ = ["app", "get_db", "DATABASE_URL", "SQLITE_DB_PATH"]
 
