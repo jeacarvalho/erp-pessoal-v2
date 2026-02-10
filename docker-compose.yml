@@ -1,0 +1,20 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: erp-pessoal-backend
+    restart: unless-stopped
+    environment:
+      - SQLITE_DB_PATH=/data/app.db
+    volumes:
+      - ./backend/app:/app
+      - ./data/sqlite:/data
+    ports:
+      - "8000:8000"
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
