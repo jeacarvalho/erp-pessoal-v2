@@ -196,8 +196,8 @@ class ERPApp:
             on_click=on_filter_click,
         )
         
-        # NÃO carrega dados iniciais para evitar problemas
-        # on_filter_click(None)
+        # Carrega dados iniciais automaticamente
+        on_filter_click(None)
         
         return ft.Column(
             [
