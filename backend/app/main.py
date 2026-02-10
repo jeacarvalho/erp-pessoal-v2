@@ -3,13 +3,23 @@ from __future__ import annotations
 import os
 from typing import Generator, List, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Query, status
+from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import BankTransaction, Category
+from pydantic import BaseModel, HttpUrl
+
+from .models import (
+    BankTransaction,
+    Category,
+    FiscalItem,
+    FiscalNote,
+    FiscalSourceType,
+)
 from .schemas import CategoryOut, TransactionCreate, TransactionOut
 from .seed import get_session_factory, seed_categories
+from .services.scraper_handler import ScraperImporter
+from .services.xml_handler import ParsedNote, XMLProcessor
 
 
 # Configuração de banco de dados
@@ -38,20 +48,25 @@ app = FastAPI(title="ERP Pessoal API")
 
 @app.on_event("startup")
 def startup_event() -> None:
-    """Evento de startup para garantir seed inicial de categorias.
+    """Garante que o banco tenha as categorias iniciais.
 
-    A ideia é executar o seed apenas quando o banco for novo. Para SQLite,
-    isso é feito verificando se o arquivo físico já existe. Para outros
-    bancos (caso sejam usados no futuro), o seed é executado sempre.
+    Em vez de checar apenas a existência de arquivo físico, verificamos
+    se a tabela de categorias está vazia. Se não houver nenhuma categoria,
+    executamos o seed.
     """
 
-    if SQLITE_DB_PATH:
-        # Banco SQLite baseado em arquivo: só semeia se o arquivo ainda não existir.
-        if not os.path.exists(SQLITE_DB_PATH):
+    print(f"[startup] DATABASE_URL = {DATABASE_URL}")
+
+    with SessionLocal() as db:
+        first_category = db.query(Category.id).first()
+        print(f"[startup] Primeira categoria encontrada: {first_category}")
+        if first_category is None:
+            print("[startup] Nenhuma categoria encontrada. Executando seed_categories...")
             seed_categories(DATABASE_URL)
-    else:
-        # Para outros tipos de URL, executa o seed sem checagem de arquivo.
-        seed_categories(DATABASE_URL)
+        else:
+            print("[startup] Categorias já existentes. Seed não será executado.")
+
+
 
 
 @app.get("/categories", response_model=List[CategoryOut])
@@ -60,6 +75,7 @@ def list_categories(db: Session = Depends(get_db)) -> List[CategoryOut]:
 
     result = db.execute(select(Category).order_by(Category.name))
     categories: List[Category] = list(result.scalars().all())
+    print(f"[categories] Total encontradas: {len(categories)}")
     return [CategoryOut.model_validate(cat) for cat in categories]
 
 
@@ -147,6 +163,93 @@ def list_transactions(
     result = db.execute(stmt)
     transactions: List[BankTransaction] = list(result.scalars().all())
     return [TransactionOut.model_validate(tx) for tx in transactions]
+
+
+def _persist_parsed_note(
+    parsed: ParsedNote, source_type: FiscalSourceType, db: Session
+) -> FiscalNote:
+    """Persiste uma nota e seus itens a partir de um ParsedNote."""
+
+    note = FiscalNote(
+        date=parsed.date,
+        total_amount=parsed.total_amount,
+        seller_name=parsed.seller_name,
+        access_key=parsed.access_key,
+        source_type=source_type,
+    )
+    db.add(note)
+    db.flush()
+
+    for item in parsed.items:
+        fiscal_item = FiscalItem(
+            note_id=note.id,
+            product_name=item.name,
+            quantity=item.quantity,
+            unit_price=item.unit_price,
+            total_price=item.total_price,
+            category_id=None,
+        )
+        db.add(fiscal_item)
+
+    db.commit()
+    db.refresh(note)
+    return note
+
+
+@app.post("/import/xml")
+async def import_xml(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Importa uma nota a partir de um arquivo XML de NF-e/NFC-e."""
+
+    content = await file.read()
+    processor = XMLProcessor()
+    parsed = processor.parse(content)
+
+    note = _persist_parsed_note(parsed, FiscalSourceType.XML, db)
+
+    return {
+        "note_id": note.id,
+        "items_count": len(parsed.items),
+        "seller_name": note.seller_name,
+        "total_amount": note.total_amount,
+    }
+
+
+class ImportUrlPayload(BaseModel):
+    url: HttpUrl
+    use_browser: bool = False
+
+
+@app.post("/import/url")
+def import_url(
+    payload: ImportUrlPayload,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Importa uma nota a partir da URL de consulta da NFC-e."""
+
+    importer = ScraperImporter()
+    try:
+        parsed = importer.import_from_url(
+            str(payload.url),
+            force_browser=payload.use_browser,
+        )
+    except ValueError as exc:
+        # Erros de parsing/scraping são retornados como 422 para o cliente.
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    note = _persist_parsed_note(parsed, FiscalSourceType.SCRAPING, db)
+
+    return {
+        "note_id": note.id,
+        "items_count": len(parsed.items),
+        "seller_name": note.seller_name,
+        "total_amount": note.total_amount,
+    }
 
 
 __all__ = ["app", "get_db", "DATABASE_URL", "SQLITE_DB_PATH"]
