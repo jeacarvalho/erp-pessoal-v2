@@ -229,13 +229,23 @@ class ERPApp:
             except Exception as ex:
                 self.show_snackbar(f"Erro ao carregar dashboard: {str(ex)}", "red")
         
-        filter_button = ft.ElevatedButton(
+        filter_button = ft.FilledButton(
             "Atualizar Dashboard",
             on_click=on_filter_click,
         )
         
-        # Carrega dados iniciais automaticamente
-        on_filter_click(None)
+        # Botão para carregar dados iniciais
+        def load_initial_data(e):
+            """Carrega dados iniciais quando o usuário clica"""
+            on_filter_click(None)
+            # Desabilita o botão após carregar
+            load_data_button.disabled = True
+            load_data_button.update()
+        
+        load_data_button = ft.FilledButton(
+            "Carregar Dados",
+            on_click=load_initial_data,
+        )
         
         return ft.Column(
             [
@@ -248,6 +258,11 @@ class ERPApp:
                         filter_button,
                     ],
                     spacing=10,
+                ),
+                ft.Row(
+                    [
+                        load_data_button,
+                    ]
                 ),
                 ft.Container(height=20),
                 chart_container,
@@ -303,13 +318,28 @@ class ERPApp:
             except Exception as ex:
                 self.show_snackbar(f"Erro ao carregar transações: {str(ex)}", "red")
         
-        # Carrega dados iniciais
-        load_transactions()
+        # Botão para carregar dados iniciais
+        def load_initial_transactions(e):
+            """Carrega dados iniciais quando o usuário clica"""
+            load_transactions()
+            # Desabilita o botão após carregar
+            load_transactions_button.disabled = True
+            load_transactions_button.update()
+        
+        load_transactions_button = ft.FilledButton(
+            "Carregar Dados",
+            on_click=load_initial_transactions,
+        )
         
         return ft.Column(
             [
                 ft.Text("Lançamentos Bancários", size=24, weight=ft.FontWeight.BOLD),
                 ft.Divider(),
+                ft.Row(
+                    [
+                        load_transactions_button,
+                    ]
+                ),
                 ft.Container(
                     content=transactions_table,
                     border=ft.border.all(1, "#9e9e9e"),
@@ -351,7 +381,7 @@ class ERPApp:
                     print("Nenhuma categoria encontrada no banco")
                     content_container.content = ft.Column([
                         ft.Text("Nenhuma categoria encontrada no banco", color="red"),
-                        ft.ElevatedButton(
+                        ft.FilledButton(
                             "Recarregar categorias",
                             on_click=lambda e: asyncio.create_task(load_categories())
                         )
@@ -390,18 +420,33 @@ class ERPApp:
                 print(f"Erro na conexão: {ex}")
                 # Timeout e Fallback: Remover "Carregando..." e adicionar botão para tentar novamente
                 content_container.content = ft.Column([
-                    ft.ElevatedButton("Erro na conexão. Tentar novamente", on_click=lambda e: asyncio.create_task(load_categories()))
+                    ft.FilledButton("Erro na conexão. Tentar novamente", on_click=lambda e: asyncio.create_task(load_categories()))
                 ], horizontal_alignment=ft.CrossAxisAlignment.CENTER)
                 print("Atualizando UI")
                 self.page.update()
         
-        # Carrega dados iniciais
-        asyncio.create_task(load_categories())
+        # Botão para carregar dados iniciais
+        def load_initial_categories(e):
+            """Carrega dados iniciais quando o usuário clica"""
+            asyncio.create_task(load_categories())
+            # Desabilita o botão após carregar
+            load_categories_button.disabled = True
+            load_categories_button.update()
+        
+        load_categories_button = ft.FilledButton(
+            "Carregar Dados",
+            on_click=load_initial_categories,
+        )
         
         return ft.Column(
             [
                 ft.Text("Categorias", size=24, weight=ft.FontWeight.BOLD),
                 ft.Divider(),
+                ft.Row(
+                    [
+                        load_categories_button,
+                    ]
+                ),
                 content_container,
             ],
             expand=True,
@@ -471,7 +516,7 @@ class ERPApp:
                 import_url_button.text = "Importar da URL"
                 self.page.update()
         
-        import_url_button = ft.ElevatedButton(
+        import_url_button = ft.FilledButton(
             "Importar da URL",
             on_click=on_import_url_click,
         )
@@ -525,7 +570,7 @@ class ERPApp:
                 dialog_title="Selecione o arquivo XML da NF-e/NFC-e",
             )
         
-        upload_xml_button = ft.ElevatedButton(
+        upload_xml_button = ft.FilledButton(
             "Selecionar arquivo XML",
             on_click=on_upload_xml_click,
         )
@@ -548,8 +593,18 @@ class ERPApp:
             """Carrega os itens fiscais mais recentes."""
             self.refresh_fiscal_items_table()
         
-        # Carrega dados iniciais
-        load_fiscal_items()
+        # Botão para carregar dados iniciais
+        def load_initial_fiscal_items(e):
+            """Carrega dados iniciais quando o usuário clica"""
+            load_fiscal_items()
+            # Desabilita o botão após carregar
+            load_fiscal_items_button.disabled = True
+            load_fiscal_items_button.update()
+        
+        load_fiscal_items_button = ft.FilledButton(
+            "Carregar Dados",
+            on_click=load_initial_fiscal_items,
+        )
         
         return ft.Column(
             [
@@ -590,6 +645,13 @@ class ERPApp:
                 ),
                 
                 ft.Container(height=20),
+                
+                # Botão para carregar dados
+                ft.Row(
+                    [
+                        load_fiscal_items_button,
+                    ]
+                ),
                 
                 # Tabela de itens importados
                 ft.Text("Últimos Itens Importados", size=18, weight=ft.FontWeight.BOLD),
@@ -680,9 +742,13 @@ def main(page: ft.Page):
     """Função principal que inicializa o app."""
     print("DEBUG: Função main chamada")
     
+    # Limpar a página antes de começar
+    page.controls.clear()
+    
     # Componente de Teste: Adicionado no início da função main
     page.add(ft.SafeArea(ft.Text("Conexão estabelecida com o ERP!", size=30, weight="bold")))
     page.update()
+    print("DEBUG: UI Montada, aguardando interação")
     
     try:
         app = ERPApp(page)
@@ -707,4 +773,4 @@ def main(page: ft.Page):
 
 
 if __name__ == "__main__":
-    ft.app(target=main, port=8080)  # Executa a aplicação na porta 8080
+    ft.run(main, port=8080)  # Executa a aplicação na porta 8080
