@@ -14,5 +14,5 @@ if ! python3 -c "import flet" 2>/dev/null; then
     pip install -r requirements.txt
 fi
 
-echo "✨ Abrindo interface..."
-python3 -m app.main_web
+echo "✨ Abrindo interface na porta 8081..."
+python3 -m app.main 8081
