@@ -83,6 +83,23 @@ class ERPApp:
         
         # NavigationRail
         print("DEBUG: Criando NavigationRail")
+        
+        # Função para sincronização manual
+        def manual_sync(e):
+            print("DEBUG: Botão de sincronização manual acionado")
+            # Atualiza o conteúdo baseado na seleção atual
+            if self.selected_index == 0:
+                self.content_area.content = self.build_dashboard_view()
+            elif self.selected_index == 1:
+                self.content_area.content = self.build_lancamentos_view()
+            elif self.selected_index == 2:
+                self.content_area.content = self.build_categorias_view()
+            elif self.selected_index == 3:
+                self.content_area.content = self.build_importar_view()
+            
+            self.page.update()
+        
+        # Adiciona o botão de refresh ao NavigationRail
         self.navigation_rail = ft.NavigationRail(
             selected_index=self.selected_index,
             label_type=ft.NavigationRailLabelType.ALL,
@@ -101,9 +118,17 @@ class ERPApp:
                 ft.NavigationRailDestination(
                     label="Importar",
                 ),
+                ft.NavigationRailDestination(
+                    icon=ft.icons.REFRESH,
+                    selected_icon=ft.icons.REFRESH,
+                    label="Sincronizar",
+                ),
             ],
-            on_change=self.on_navigation_change,
+            on_change=self.on_navigation_change_refresh,
         )
+        
+        # Armazena a função de sincronização para uso no handler
+        self.manual_sync = manual_sync
         
         # Área de conteúdo
         print("DEBUG: Criando content_area")
@@ -129,21 +154,30 @@ class ERPApp:
         self.page.update()
         print("DEBUG: setup_ui completo!")
 
-    def on_navigation_change(self, e):
-        """Manipula mudanças na navegação."""
+    def on_navigation_change_refresh(self, e):
+        """Manipula mudanças na navegação, incluindo o botão de sincronização."""
         self.selected_index = e.control.selected_index
         
-        # Atualiza o conteúdo baseado na seleção
-        if self.selected_index == 0:
-            self.content_area.content = self.build_dashboard_view()
-        elif self.selected_index == 1:
-            self.content_area.content = self.build_lancamentos_view()
-        elif self.selected_index == 2:
-            self.content_area.content = self.build_categorias_view()
-        elif self.selected_index == 3:
-            self.content_area.content = self.build_importar_view()
-        
-        self.page.update()
+        # Verifica se é o botão de sincronização (último item)
+        destinations_count = len(self.navigation_rail.destinations)
+        if self.selected_index == destinations_count - 1:  # Índice do botão de sincronização
+            print("DEBUG: Botão de sincronização selecionado")
+            self.manual_sync(None)
+            # Retorna para a última opção válida (antes do botão de sincronização)
+            self.selected_index = max(0, destinations_count - 2)
+            self.navigation_rail.selected_index = self.selected_index
+        else:
+            # Atualiza o conteúdo baseado na seleção normal
+            if self.selected_index == 0:
+                self.content_area.content = self.build_dashboard_view()
+            elif self.selected_index == 1:
+                self.content_area.content = self.build_lancamentos_view()
+            elif self.selected_index == 2:
+                self.content_area.content = self.build_categorias_view()
+            elif self.selected_index == 3:
+                self.content_area.content = self.build_importar_view()
+            
+            self.page.update()
 
     def build_dashboard_view(self) -> ft.Column:
         """Constrói a visualização do Dashboard."""
@@ -742,12 +776,20 @@ def main(page: ft.Page):
     """Função principal que inicializa o app."""
     print("DEBUG: Função main chamada")
     
-    # Limpar a página antes de começar
-    page.controls.clear()
+    # Limpar a página antes de começar (persistência de estado)
+    page.clean()
+    page.on_connect = lambda _: print("DEBUG: Nova sessão estabelecida via WebSocket")
     
-    # Componente de Teste: Adicionado no início da função main
-    page.add(ft.SafeArea(ft.Text("Conexão estabelecida com o ERP!", size=30, weight="bold")))
-    page.update()
+    # Adiciona manipulador de rota para forçar redraw na atualização (F5)
+    def handle_route_change(route):
+        print(f"DEBUG: on_route_change disparado para rota: {route.route}")
+        page.clean()
+        # Recreate the app after route change
+        app = ERPApp(page)
+        page.on_close = lambda _: app.cleanup()
+    
+    page.on_route_change = handle_route_change
+    
     print("DEBUG: UI Montada, aguardando interação")
     
     try:
@@ -773,4 +815,4 @@ def main(page: ft.Page):
 
 
 if __name__ == "__main__":
-    ft.run(main, port=8080)  # Executa a aplicação na porta 8080
+    ft.run(main, port=8081)  # Executa a aplicação na porta 8081 para evitar conflitos de cache
