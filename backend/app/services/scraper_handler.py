@@ -61,7 +61,7 @@ class DefaultSefazAdapter(BaseSefazAdapter):
 
         items = self._extract_items(soup)
 
-        access_key = f"SCRAPING-{uuid4().hex}"
+        access_key = self._extract_access_key(soup)
 
         return ParsedNote(
             date=emission_date,
@@ -78,6 +78,33 @@ class DefaultSefazAdapter(BaseSefazAdapter):
             if tag and tag.get_text(strip=True):
                 return tag.get_text(strip=True)
         return "Estabelecimento Desconhecido"
+
+    def _extract_access_key(self, soup: BeautifulSoup) -> str:
+        # Procura por elementos que possam conter a chave de acesso
+        # Normalmente está em um span, div ou strong com termos como "Chave de Acesso", "Chave de acesso", etc.
+        text = soup.get_text(" ", strip=True)
+        
+        # Procura por padrões de chave de acesso (44 dígitos)
+        import re
+        # Procura por padrões com espaços ou sem espaços (ex: 3326 0210 6976 9700 0660 6510 7000 3680 6612 6649 4182 ou 33260210697697000660651070003680661266494182)
+        patterns = [
+            r'Chave\s*de\s*Acesso[^\d]*([0-9\s]{40,50})',  # "Chave de Acesso" followed by digits/spaces
+            r'Chave\s*de\s*acesso[^\d]*([0-9\s]{40,50})',  # "Chave de acesso" followed by digits/spaces
+            r'([0-9\s]{40,50})',  # Just the 44 digits pattern (with possible spaces)
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            for match in matches:
+                # Clean up the matched string to keep only digits and remove extra spaces
+                clean_match = re.sub(r'\s+', '', match.strip())
+                if len(clean_match) == 44 and clean_match.isdigit():
+                    # Format the key nicely with spaces every 4 digits
+                    formatted_key = ' '.join([clean_match[i:i+4] for i in range(0, len(clean_match), 4)])
+                    return formatted_key
+        
+        # If no key found, generate a UUID-based key as fallback
+        return f"SCRAPING-{uuid4().hex}"
 
     def _extract_total_amount(self, soup: BeautifulSoup) -> float:
         # Busca por textos que contenham "Total" e um valor numérico próximo.
@@ -186,7 +213,7 @@ class RJSefazNFCeAdapter(BaseSefazAdapter):
         emission_date = self._extract_date(soup)
         items = self._extract_items(soup)
 
-        access_key = f"SCRAPING-RJ-{uuid4().hex}"
+        access_key = self._extract_access_key(soup)
 
         return ParsedNote(
             date=emission_date,
@@ -211,6 +238,33 @@ class RJSefazNFCeAdapter(BaseSefazAdapter):
         if candidates:
             return candidates[0]
         return "Estabelecimento Desconhecido"
+
+    def _extract_access_key(self, soup: BeautifulSoup) -> str:
+        # Procura por elementos que possam conter a chave de acesso
+        # Normalmente está em um span, div ou strong com termos como "Chave de Acesso", "Chave de acesso", etc.
+        text = soup.get_text(" ", strip=True)
+        
+        # Procura por padrões de chave de acesso (44 dígitos)
+        import re
+        # Procura por padrões com espaços ou sem espaços (ex: 3326 0210 6976 9700 0660 6510 7000 3680 6612 6649 4182 ou 33260210697697000660651070003680661266494182)
+        patterns = [
+            r'Chave\s*de\s*Acesso[^\d]*([0-9\s]{40,50})',  # "Chave de Acesso" followed by digits/spaces
+            r'Chave\s*de\s*acesso[^\d]*([0-9\s]{40,50})',  # "Chave de acesso" followed by digits/spaces
+            r'([0-9\s]{40,50})',  # Just the 44 digits pattern (with possible spaces)
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, text, re.IGNORECASE)
+            for match in matches:
+                # Clean up the matched string to keep only digits and remove extra spaces
+                clean_match = re.sub(r'\s+', '', match.strip())
+                if len(clean_match) == 44 and clean_match.isdigit():
+                    # Format the key nicely with spaces every 4 digits
+                    formatted_key = ' '.join([clean_match[i:i+4] for i in range(0, len(clean_match), 4)])
+                    return formatted_key
+        
+        # If no key found, generate a UUID-based key as fallback
+        return f"SCRAPING-RJ-{uuid4().hex}"
 
     def _extract_total_amount(self, soup: BeautifulSoup) -> float:
         text = soup.get_text(" ", strip=True)
