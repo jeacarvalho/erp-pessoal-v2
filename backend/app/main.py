@@ -46,6 +46,12 @@ def get_db() -> Generator[Session, None, None]:
 app = FastAPI(title="ERP Pessoal API")
 
 
+@app.get("/health")
+def health_check():
+    """Health check endpoint to verify API availability."""
+    return {"status": "ok", "message": "Backend is running"}
+
+
 @app.on_event("startup")
 def startup_event() -> None:
     """Garante que o banco tenha as categorias iniciais.

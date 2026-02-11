@@ -55,10 +55,11 @@ class ERPApp:
     def check_backend_health(self) -> bool:
         """Verifica se o backend está saudável."""
         try:
-            response = self.http_client.get("/docs")  # Endpoint padrão do FastAPI
+            response = self.http_client.get("/health")  # Usando o novo endpoint de health check
             return response.status_code == 200
         except Exception as e:
-            print(f"Erro ao verificar saúde do backend: {e}")
+            print(f"ERRO: Backend não está respondendo. Verifique se o servidor está rodando em {BACKEND_URL}/health")
+            print(f"Detalhes do erro: {e}")
             return False
 
     def setup_ui(self):
