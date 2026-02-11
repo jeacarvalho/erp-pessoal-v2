@@ -41,8 +41,13 @@ class ERPApp:
         
         # Verifica se o backend está disponível antes de iniciar a UI
         print("DEBUG: Verificando saúde do backend...")
+        # Mostrar mensagem de carregamento enquanto verifica a saúde do backend
+        self.page.add(ft.Text("Carregando..."))
+        self.page.update()
+        
         if not self.check_backend_health():
             print("ERRO: Backend não está respondendo. Verifique se o servidor está rodando em http://localhost:8000")
+            self.page.clean()  # Limpa a mensagem de carregamento
             self.page.add(
                 ft.Column([
                     ft.Text("Backend não está disponível!", style="headlineMedium", color="red"),
@@ -50,9 +55,8 @@ class ERPApp:
                 ])
             )
             self.page.update()
-            return
-            
-        print("DEBUG: Backend saudável, iniciando UI...")
+        else:
+            print("DEBUG: Backend saudável, iniciando UI...")
         self.setup_ui()
         print("DEBUG: setup_ui concluído")
 
@@ -341,7 +345,16 @@ class ERPApp:
                 self.page.update()
                 
             except Exception as ex:
-                self.show_snackbar(f"Erro ao carregar categorias: {str(ex)}", "red")
+                # Tratamento de Exceção: Mostra o erro em um AlertDialog
+                dialog = ft.AlertDialog(
+                    title=ft.Text("Erro ao carregar categorias"),
+                    content=ft.Text(f"{str(ex)}"),
+                    actions=[
+                        ft.TextButton("OK", on_click=lambda e: self.page.close(dialog))
+                    ]
+                )
+                self.page.open(dialog)
+                self.page.update()
         
         # Carrega dados iniciais
         load_categories()
@@ -624,6 +637,11 @@ class ERPApp:
 def main(page: ft.Page):
     """Função principal que inicializa o app."""
     print("DEBUG: Função main chamada")
+    
+    # Componente de Teste: Adicionado no início da função main
+    page.add(ft.SafeArea(ft.Text("Conexão estabelecida com o ERP!", size=30, weight="bold")))
+    page.update()
+    
     try:
         app = ERPApp(page)
         print("DEBUG: ERPApp instanciado com sucesso")
@@ -641,6 +659,9 @@ def main(page: ft.Page):
             ])
         )
         page.update()
+    
+    # Comando de Update: Garantido que existe ao final da função main
+    page.update()
 
 
 if __name__ == "__main__":
