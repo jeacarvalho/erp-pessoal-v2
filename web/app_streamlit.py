@@ -1,5 +1,6 @@
 import streamlit as st
 import httpx
+import pandas as pd
 from typing import Optional
 
 
@@ -29,6 +30,12 @@ def get_transactions():
     return fetch_data("http://127.0.0.1:8000/transactions")
 
 
+@st.cache_data(ttl=60)  # Cache for 60 seconds
+def get_price_comparison(product_name: str):
+    """Get price comparison data from backend with caching"""
+    return fetch_data(f"http://127.0.0.1:8000/analytics/price-comparison?product_name={product_name}")
+
+
 def main():
     # Set page configuration
     st.set_page_config(layout="wide", page_title="ERP Pessoal - Dignidade Financeira")
@@ -40,7 +47,7 @@ def main():
     st.sidebar.header("Menu de Navegação")
     page = st.sidebar.selectbox(
         "Selecione uma página:",
-        ["Dashboard", "Categorias", "Importar XML/URL", "Histórico de Preços (Inflação)"]
+        ["Dashboard", "Categorias", "Importar XML/URL", "Histórico de Preços (Inflação)", "Comparação de Preços"]
     )
     
     if page == "Dashboard":
@@ -116,6 +123,73 @@ def main():
     elif page == "Histórico de Preços (Inflação)":
         st.header("Histórico de Preços (Inflação)")
         st.write("Funcionalidade de histórico de preços em desenvolvimento.")
+    
+    elif page == "Comparação de Preços":
+        st.header("Comparação de Preços entre Mercados")
+        
+        # Get all products for the select box
+        all_items_response = fetch_data("http://127.0.0.1:8000/fiscal-items")
+        
+        if all_items_response:
+            # Extract unique product names
+            product_names = list(set([item['product_name'] for item in all_items_response]))
+            
+            # Create a select box for product selection
+            selected_product = st.selectbox(
+                "Selecione um produto para comparar preços:",
+                sorted(product_names)
+            )
+            
+            if selected_product:
+                # Fetch price comparison data
+                price_data = get_price_comparison(selected_product)
+                
+                if price_data:
+                    # Convert to DataFrame for easier manipulation
+                    df = pd.DataFrame(price_data)
+                    
+                    if not df.empty:
+                        # Display average price per seller
+                        avg_prices = df.groupby('seller_name')['unit_price'].mean().sort_values()
+                        
+                        # Find the cheapest seller
+                        cheapest_seller = avg_prices.index[0]
+                        cheapest_price = avg_prices.iloc[0]
+                        overall_avg = df['unit_price'].mean()
+                        
+                        # Calculate percentage difference
+                        if overall_avg > 0:
+                            percent_diff = ((overall_avg - cheapest_price) / overall_avg) * 100
+                            
+                            # Display savings alert
+                            st.success(f"Este item está, em média, {percent_diff:.0f}% mais barato no {cheapest_seller}")
+                        
+                        # Prepare data for scatter chart (convert date to datetime)
+                        df['date'] = pd.to_datetime(df['date'])
+                        
+                        # Create scatter chart showing prices over time by seller
+                        st.subheader(f"Variação de Preços ao Longo do Tempo - {selected_product}")
+                        
+                        # Using st.scatter_chart to show price vs time grouped by seller
+                        st.scatter_chart(
+                            data=df,
+                            x='date',
+                            y='unit_price',
+                            color='seller_name',
+                            size=100  # Fixed size for all points
+                        )
+                        
+                        # Show raw data table
+                        st.subheader("Dados de Preços")
+                        st.dataframe(df[['product_name', 'seller_name', 'unit_price', 'date']].sort_values('date', ascending=False))
+                    else:
+                        st.info("Nenhum dado de preço encontrado para este produto.")
+                else:
+                    st.error("Erro ao buscar dados de comparação de preços.")
+            else:
+                st.info("Selecione um produto para ver a comparação de preços.")
+        else:
+            st.error("Erro ao buscar lista de produtos.")
 
 
 if __name__ == "__main__":

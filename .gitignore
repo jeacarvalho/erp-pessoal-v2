@@ -1,6 +1,35 @@
 ```
-# Python
+# Compiled and build artifacts
+*.pyc
 __pycache__/
+*.o
+*.obj
+
+# Dependencies
+.venv/
+venv/
+node_modules/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# Coverage
+.coverage
+coverage/
+htmlcov/
+
+# Python specific
 *.py[cod]
 *$py.class
 *.so
@@ -20,31 +49,8 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
 
-# Virtual environments
-venv/
-ENV/
-.env
-.venv
-env/
-ENV/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Logs
-*.log
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Environment
-.env
-.env.local
-*.env.*
+# IDE specific
+.pytest_cache/
+.mypy_cache/
 ```

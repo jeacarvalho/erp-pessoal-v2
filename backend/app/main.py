@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from datetime import date
 from typing import Generator, List, Optional
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from pydantic import BaseModel, HttpUrl
@@ -346,6 +347,56 @@ def list_fiscal_items(
             "note_date": fiscal_note.date.isoformat(),
             "seller_name": fiscal_note.seller_name,
         })
+    
+    return items
+
+
+def normalize_product_name(name: str) -> str:
+    """Normalize product name for comparison by removing special characters and converting to lowercase."""
+    if not name:
+        return ""
+    # Remove special characters and convert to lowercase
+    normalized = re.sub(r'[^\w\s]', ' ', name.lower())
+    # Remove extra whitespaces
+    normalized = ' '.join(normalized.split())
+    return normalized
+
+
+@app.get("/analytics/price-comparison")
+def price_comparison(
+    product_name: str = Query(..., description="Product name to search for"),
+    db: Session = Depends(get_db),
+) -> List[dict]:
+    """Compare prices of a specific product across different markets over time."""
+    
+    # Normalize the search term
+    normalized_search = normalize_product_name(product_name)
+    
+    # Find all fiscal items with similar product names
+    stmt = (
+        select(FiscalItem, FiscalNote)
+        .join(FiscalNote, FiscalItem.note_id == FiscalNote.id)
+        .where(func.lower(FiscalItem.product_name).contains(normalized_search))
+        .order_by(FiscalNote.date)
+    )
+    
+    result = db.execute(stmt)
+    rows = result.all()
+    
+    # Group items by normalized product name
+    items = []
+    for fiscal_item, fiscal_note in rows:
+        normalized_item_name = normalize_product_name(fiscal_item.product_name)
+        
+        # Only include if the normalized name contains our search term
+        if normalized_search in normalized_item_name:
+            items.append({
+                "product_name": fiscal_item.product_name,
+                "normalized_name": normalized_item_name,
+                "unit_price": fiscal_item.unit_price,
+                "date": fiscal_note.date.isoformat(),
+                "seller_name": fiscal_note.seller_name,
+            })
     
     return items
 
