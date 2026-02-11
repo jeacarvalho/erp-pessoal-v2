@@ -34,11 +34,14 @@ def test_category_hierarchy_seed_creates_expected_structure() -> None:
     database_url = "sqlite+pysqlite:///:memory:"
     engine = get_engine(database_url)
     Base.metadata.create_all(engine)
-
-    seed_categories(database_url)
     session_factory = get_session_factory(database_url)
 
+    # Realiza o seed e verifica tudo na mesma sessão
     with session_factory() as session:
+        from app.seed import _create_category_hierarchy
+        _create_category_hierarchy(session)
+        session.commit()
+
         roots: List[Category] = (
             session.query(Category)
             .filter(Category.parent_id.is_(None))

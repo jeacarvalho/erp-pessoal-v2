@@ -1,38 +1,29 @@
-```gitignore
+```
+# Database files
+*.db
+
 # Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-
-# Dependencies
+.Python
+env/
 venv/
 .venv/
-.env
-.env.local
-.env.*
-
-# Logs
-*.log
-
-# Tests
-.pytest_cache/
+.venv.bak/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
 .coverage
-coverage/
-htmlcov/
-
-# Build artifacts
-dist/
-build/
-*.egg-info/
-
-# Editors
-.vscode/
-.idea/
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+*.tmp
 *.swp
-*.swo
-
-# System
 .DS_Store
 Thumbs.db
 ```
