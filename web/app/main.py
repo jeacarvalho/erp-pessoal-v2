@@ -324,6 +324,7 @@ class ERPApp:
         
         async def load_categories():
             """Carrega as categorias do backend."""
+            print("Iniciando requisição")
             try:
                 # Mostra o indicador de progresso
                 content_container.content = ft.Column([
@@ -335,7 +336,22 @@ class ERPApp:
                 # Faz a requisição assíncrona com timeout de 5 segundos
                 response = await self.async_http_client.get("/categories")
                 response.raise_for_status()
+                print("Processando JSON")
                 self.categories = response.json()
+                
+                # Validar se a resposta está vazia
+                if not self.categories:
+                    print("Nenhuma categoria encontrada no banco")
+                    content_container.content = ft.Column([
+                        ft.Text("Nenhuma categoria encontrada no banco", color="red"),
+                        ft.ElevatedButton(
+                            "Recarregar categorias",
+                            on_click=lambda e: asyncio.create_task(load_categories())
+                        )
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+                    print("Atualizando UI")
+                    self.page.update()
+                    return
                 
                 # Cria a lista de categorias
                 categories_controls = []
@@ -360,28 +376,16 @@ class ERPApp:
                     padding=10,
                     expand=True
                 )
+                print("Atualizando UI")
                 self.page.update()
                 
-            except httpx.TimeoutException:
-                # Em caso de timeout, mostra mensagem de erro com botão para tentar novamente
-                content_container.content = ft.Column([
-                    ft.Text("Erro: Backend demorou muito a responder.", color="red"),
-                    ft.ElevatedButton(
-                        "Clique para tentar novamente",
-                        on_click=lambda e: asyncio.create_task(load_categories())
-                    )
-                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER)
-                self.page.update()
             except Exception as ex:
-                # Tratamento de Exceção: Mostra o erro em um AlertDialog
-                dialog = ft.AlertDialog(
-                    title=ft.Text("Erro ao carregar categorias"),
-                    content=ft.Text(f"{str(ex)}"),
-                    actions=[
-                        ft.TextButton("OK", on_click=lambda e: self.page.close(dialog))
-                    ]
-                )
-                self.page.open(dialog)
+                print(f"Erro na conexão: {ex}")
+                # Timeout e Fallback: Remover "Carregando..." e adicionar botão para tentar novamente
+                content_container.content = ft.Column([
+                    ft.ElevatedButton("Erro na conexão. Tentar novamente", on_click=lambda e: asyncio.create_task(load_categories()))
+                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+                print("Atualizando UI")
                 self.page.update()
         
         # Carrega dados iniciais
