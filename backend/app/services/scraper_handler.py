@@ -175,61 +175,161 @@ class DefaultSefazAdapter(BaseSefazAdapter):
     def _extract_items(self, soup: BeautifulSoup) -> List[ParsedItem]:
         items: List[ParsedItem] = []
 
-        # Estratégia genérica: pega a primeira tabela com pelo menos 3 colunas.
-        for table in soup.find_all("table"):
+        # Primeiro tenta encontrar a tabela específica de itens com ID "tabResult"
+        # que é usada no layout SEFAZ-RJ conforme o HTML fornecido
+        table = soup.find("table", {"id": "tabResult"})
+        
+        if table:
+            # Processa a tabela específica de itens
             rows = table.find_all("tr")
-            if len(rows) < 2:
-                continue
-            header_cols = rows[0].find_all(["th", "td"])
-            if len(header_cols) < 3:
-                continue
+            for row in rows:
+                # Verifica se é uma linha de item (tem ID começando com "Item + ")
+                row_id = row.get("id", "")
+                if row_id and row_id.startswith("Item + "):
+                    # Extrai os dados do item
+                    tds = row.find_all("td")
+                    if len(tds) >= 2:
+                        # Primeira célula contém nome, código, quantidade, unidade e preço unitário
+                        first_td = tds[0]
+                        
+                        # Extrai o nome do produto (texto com classe "txtTit")
+                        name_element = first_td.find("span", class_="txtTit")
+                        if name_element:
+                            name = name_element.get_text(strip=True)
+                        else:
+                            # Se não encontrar com span, tenta extrair o primeiro texto significativo
+                            name_parts = []
+                            for content in first_td.contents:
+                                if hasattr(content, 'name') and content.name == 'span':
+                                    continue
+                                elif hasattr(content, 'strip'):
+                                    text_part = content.strip()
+                                    if text_part and not text_part.isspace():
+                                        name_parts.append(text_part)
+                            name = " ".join(name_parts).split('\n')[0].strip() if name_parts else ""
+                        
+                        # Extrai quantidade e unidade dos spans
+                        qty_text = "0"
+                        unit_text = "UN"
+                        
+                        qtd_span = first_td.find("span", class_="Rqtd")
+                        if qtd_span:
+                            qtd_str = qtd_span.get_text(strip=True)
+                            # Extrai número após "Qtde.:" ou "Qtde:"
+                            import re
+                            qty_match = re.search(r'Qtde\.?:?\s*([0-9,.]+)', qtd_str, re.IGNORECASE)
+                            if qty_match:
+                                qty_text = qty_match.group(1)
+                        
+                        un_span = first_td.find("span", class_="RUN")
+                        if un_span:
+                            un_str = un_span.get_text(strip=True)
+                            # Extrai unidade após "UN: "
+                            un_match = re.search(r'UN:\s*(\w+)', un_str, re.IGNORECASE)
+                            if un_match:
+                                unit_text = un_match.group(1)
+                        
+                        # Extrai preço unitário
+                        unit_price_text = "0"
+                        price_span = first_td.find("span", class_="RvlUnit")
+                        if price_span:
+                            price_str = price_span.get_text(strip=True)
+                            # Extrai número após "Vl. Unit.:" ou similar
+                            price_match = re.search(r'Vl\.?\s*Unit\.?:?\s*([0-9,.]+)', price_str, re.IGNORECASE)
+                            if price_match:
+                                unit_price_text = price_match.group(1)
+                        
+                        # Segunda célula contém o valor total
+                        total_cell = tds[1].find("span", class_="valor") if len(tds) > 1 else None
+                        total_price_text = total_cell.get_text(strip=True) if total_cell else unit_price_text
 
-            # Considera que as demais linhas representam itens.
-            for row in rows[1:]:
-                cols = row.find_all("td")
-                if len(cols) < 3:
+                        def _to_float(value: str) -> float:
+                            return float(value.replace(".", "").replace(",", "."))
+
+                        try:
+                            quantity = _to_float(qty_text)
+                        except ValueError:
+                            quantity = 0.0
+                        try:
+                            unit_price = _to_float(unit_price_text)
+                        except ValueError:
+                            unit_price = 0.0
+                        try:
+                            total_price = _to_float(total_price_text)
+                        except ValueError:
+                            total_price = unit_price * quantity
+
+                        if name and name.lower() != "niteroi":  # Filtra o item incorreto "NITERÓI"
+                            items.append(
+                                ParsedItem(
+                                    name=name,
+                                    quantity=quantity,
+                                    unit=unit_text,
+                                    unit_price=unit_price,
+                                    total_price=total_price,
+                                )
+                            )
+        else:
+            # Fallback: estratégia genérica para outros layouts
+            for table in soup.find_all("table"):
+                rows = table.find_all("tr")
+                if len(rows) < 2:
                     continue
-                name = cols[0].get_text(strip=True)
-                qty_text = cols[1].get_text(strip=True) or "0"
-                unit_text = cols[2].get_text(strip=True)
-                unit_price_text = (
-                    cols[3].get_text(strip=True) if len(cols) > 3 else "0"
-                )
-                total_price_text = (
-                    cols[4].get_text(strip=True) if len(cols) > 4 else unit_price_text
-                )
-
-                def _to_float(value: str) -> float:
-                    return float(value.replace(".", "").replace(",", "."))
-
-                try:
-                    quantity = _to_float(qty_text)
-                except ValueError:
-                    quantity = 0.0
-                try:
-                    unit_price = _to_float(unit_price_text)
-                except ValueError:
-                    unit_price = 0.0
-                try:
-                    total_price = _to_float(total_price_text)
-                except ValueError:
-                    total_price = unit_price * quantity
-
-                if not name:
+                header_cols = rows[0].find_all(["th", "td"])
+                if len(header_cols) < 3:
                     continue
 
-                items.append(
-                    ParsedItem(
-                        name=name,
-                        quantity=quantity,
-                        unit=unit_text,
-                        unit_price=unit_price,
-                        total_price=total_price,
+                # Considera que as demais linhas representam itens.
+                for row in rows[1:]:
+                    cols = row.find_all("td")
+                    if len(cols) < 3:
+                        continue
+                    name = cols[0].get_text(strip=True)
+                    
+                    # Adiciona filtro para evitar pegar o nome da cidade como item
+                    if name.lower() == "niteroi":
+                        continue
+                        
+                    qty_text = cols[1].get_text(strip=True) or "0"
+                    unit_text = cols[2].get_text(strip=True)
+                    unit_price_text = (
+                        cols[3].get_text(strip=True) if len(cols) > 3 else "0"
                     )
-                )
+                    total_price_text = (
+                        cols[4].get_text(strip=True) if len(cols) > 4 else unit_price_text
+                    )
 
-            if items:
-                break
+                    def _to_float(value: str) -> float:
+                        return float(value.replace(".", "").replace(",", "."))
+
+                    try:
+                        quantity = _to_float(qty_text)
+                    except ValueError:
+                        quantity = 0.0
+                    try:
+                        unit_price = _to_float(unit_price_text)
+                    except ValueError:
+                        unit_price = 0.0
+                    try:
+                        total_price = _to_float(total_price_text)
+                    except ValueError:
+                        total_price = unit_price * quantity
+
+                    if not name:
+                        continue
+
+                    items.append(
+                        ParsedItem(
+                            name=name,
+                            quantity=quantity,
+                            unit=unit_text,
+                            unit_price=unit_price,
+                            total_price=total_price,
+                        )
+                    )
+
+                if items:
+                    break
 
         if not items:
             raise ValueError("Não foi possível localizar itens da nota na página HTML.")

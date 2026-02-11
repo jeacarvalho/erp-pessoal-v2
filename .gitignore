@@ -1,1 +1,1 @@
-Nothing needs to be added to .gitignore since the changes only include Python source files (.py) which are legitimate source code files that should be tracked in version control.
+Nothing should be ignored based on the provided file changes. The only modified file is a Python source file (`backend/app/services/scraper_handler.py`), which should not be added to .gitignore.
