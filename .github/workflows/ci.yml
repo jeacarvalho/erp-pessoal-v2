@@ -22,7 +22,13 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          # Dependências do Backend
+          pip install fastapi uvicorn sqlalchemy httpx pytest lxml beautifulsoup4
+          # Dependências do Frontend
+          pip install flet
+          # Instalar a partir dos arquivos requirements.txt também
           pip install -r requirements.txt
+          if [ -f web/requirements.txt ]; then pip install -r web/requirements.txt; fi
 
       - name: Run tests
         run: |
