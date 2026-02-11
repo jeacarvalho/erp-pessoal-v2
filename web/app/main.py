@@ -644,4 +644,4 @@ def main(page: ft.Page):
 
 
 if __name__ == "__main__":
-    ft.app(target=main)
+    ft.app(target=main, port=8080)  # Executa a aplicação na porta 8080
