@@ -14,7 +14,7 @@ import asyncio
 
 
 # Configuração da URL do backend
-BACKEND_URL = "http://localhost:8000"
+BACKEND_URL = "http://127.0.0.1:8000"
 
 
 class ERPApp:
@@ -34,8 +34,8 @@ class ERPApp:
         self.content_area: Optional[ft.Container] = None
         
         # Cliente HTTP
-        self.http_client = httpx.Client(base_url=BACKEND_URL, timeout=30.0)
-        self.async_http_client = httpx.AsyncClient(base_url=BACKEND_URL, timeout=5.0)
+        self.http_client = httpx.Client(base_url=BACKEND_URL, timeout=2.0, trust_env=False)
+        self.async_http_client = httpx.AsyncClient(base_url=BACKEND_URL, timeout=2.0, trust_env=False)
         
         # Dados em cache
         self.categories: List[Dict[str, Any]] = []
@@ -65,12 +65,13 @@ class ERPApp:
     def check_backend_health(self) -> bool:
         """Verifica se o backend está saudável."""
         try:
-            print(f"DEBUG: Tentando conectar ao backend em {BACKEND_URL}/health")
+            url = f"{BACKEND_URL}/health"
+            print(f"DEBUG FRONTEND: Tentando conectar em {url}...")
             response = self.http_client.get("/health")  # Usando o novo endpoint de health check
             print(f"DEBUG: Resposta do backend: status={response.status_code}, content={response.text[:200]}")
             return response.status_code == 200
         except Exception as e:
-            print(f"ERRO: Backend não está respondendo. Verifique se o servidor está rodando em {BACKEND_URL}/health")
+            print("ERRO: O Backend na porta 8000 não foi encontrado")
             print(f"Detalhes do erro: {e}")
             import traceback
             traceback.print_exc()
@@ -176,6 +177,8 @@ class ERPApp:
                 end = end_date_field.value
                 
                 # Busca transações
+                url = f"{BACKEND_URL}/transactions"
+                print(f"DEBUG FRONTEND: Tentando conectar em {url}...")
                 response = self.http_client.get("/transactions")
                 response.raise_for_status()
                 transactions = response.json()
@@ -271,6 +274,8 @@ class ERPApp:
         def load_transactions():
             """Carrega as transações do backend."""
             try:
+                url = f"{BACKEND_URL}/transactions"
+                print(f"DEBUG FRONTEND: Tentando conectar em {url}...")
                 response = self.http_client.get("/transactions")
                 response.raise_for_status()
                 transactions = response.json()
@@ -333,7 +338,9 @@ class ERPApp:
                 ], horizontal_alignment=ft.CrossAxisAlignment.CENTER)
                 self.page.update()
                 
-                # Faz a requisição assíncrona com timeout de 5 segundos
+                # Faz a requisição assíncrona com timeout de 2 segundos
+                url = f"{BACKEND_URL}/categories"
+                print(f"DEBUG FRONTEND: Tentando conectar em {url}...")
                 response = await self.async_http_client.get("/categories")
                 response.raise_for_status()
                 print("Processando JSON")
@@ -601,6 +608,8 @@ class ERPApp:
         """Atualiza a tabela de itens fiscais."""
         try:
             # Busca os itens fiscais do backend
+            url = f"{BACKEND_URL}/fiscal-items?limit=20"
+            print(f"DEBUG FRONTEND: Tentando conectar em {url}...")
             response = self.http_client.get("/fiscal-items?limit=20")
             response.raise_for_status()
             items = response.json()
