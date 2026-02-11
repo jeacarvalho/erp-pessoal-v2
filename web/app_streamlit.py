@@ -1,5 +1,6 @@
 import streamlit as st
 import httpx
+import pandas as pd
 from typing import Optional
 
 
@@ -7,6 +8,20 @@ def fetch_data(url: str):
     """Fetch data from the backend API"""
     try:
         response = httpx.get(url)
+        response.raise_for_status()
+        return response.json()
+    except httpx.RequestError as e:
+        st.error(f"Erro ao conectar ao backend: {str(e)}")
+        return None
+    except httpx.HTTPStatusError as e:
+        st.error(f"Erro HTTP ao acessar o backend: {str(e)}")
+        return None
+
+
+def fetch_price_comparison(product_name: str):
+    """Fetch price comparison data from the backend API"""
+    try:
+        response = httpx.get(f"http://127.0.0.1:8000/analytics/price-comparison?product_name={product_name}")
         response.raise_for_status()
         return response.json()
     except httpx.RequestError as e:
@@ -29,6 +44,12 @@ def get_transactions():
     return fetch_data("http://127.0.0.1:8000/transactions")
 
 
+@st.cache_data(ttl=60)  # Cache for 60 seconds
+def get_fiscal_items():
+    """Get fiscal items from backend with caching"""
+    return fetch_data("http://127.0.0.1:8000/fiscal-items")
+
+
 def main():
     # Set page configuration
     st.set_page_config(layout="wide", page_title="ERP Pessoal - Dignidade Financeira")
@@ -40,7 +61,7 @@ def main():
     st.sidebar.header("Menu de Navegação")
     page = st.sidebar.selectbox(
         "Selecione uma página:",
-        ["Dashboard", "Categorias", "Importar XML/URL", "Histórico de Preços (Inflação)"]
+        ["Dashboard", "Categorias", "Importar XML/URL", "Histórico de Preços (Inflação)", "Comparação de Preços"]
     )
     
     if page == "Dashboard":
@@ -116,6 +137,82 @@ def main():
     elif page == "Histórico de Preços (Inflação)":
         st.header("Histórico de Preços (Inflação)")
         st.write("Funcionalidade de histórico de preços em desenvolvimento.")
+    
+    elif page == "Comparação de Preços":
+        st.header("Comparação de Preços entre Mercados")
+        
+        # Fetch all fiscal items to populate product selection
+        fiscal_items = get_fiscal_items()
+        
+        if fiscal_items:
+            # Extract unique product names for the selectbox
+            product_names = list(set([item['product_name'] for item in fiscal_items]))
+            product_names.sort()
+            
+            # Create a selectbox for product selection
+            selected_product = st.selectbox("Selecione um produto para comparar preços:", options=product_names)
+            
+            if selected_product:
+                # Fetch price comparison data for the selected product
+                comparison_data = fetch_price_comparison(selected_product)
+                
+                if comparison_data:
+                    # Convert to DataFrame for easier manipulation
+                    df = pd.DataFrame(comparison_data)
+                    
+                    if not df.empty:
+                        # Prepare data for visualization
+                        df['date'] = pd.to_datetime(df['date'])
+                        
+                        # Calculate average prices per seller
+                        avg_prices = df.groupby('seller_name')['unit_price'].mean().sort_values()
+                        
+                        # Find the cheapest seller
+                        cheapest_seller = avg_prices.index[0]
+                        cheapest_avg_price = avg_prices.iloc[0]
+                        other_sellers_avg = avg_prices.iloc[1:].mean()
+                        
+                        # Calculate percentage difference
+                        if other_sellers_avg > 0:
+                            percent_cheaper = ((other_sellers_avg - cheapest_avg_price) / other_sellers_avg) * 100
+                        else:
+                            percent_cheaper = 0
+                        
+                        # Display alert card
+                        st.markdown(
+                            f"""
+                            <div style="background-color: #d4edda; padding: 15px; border-radius: 8px; border-left: 5px solid #28a745;">
+                                <h4 style="color: #155724;">Alerta de Economia 📈</h4>
+                                <p style="color: #155724; font-size: 16px;">
+                                    Este item está, em média, <strong>{percent_cheaper:.0f}% mais barato</strong> no <strong>{cheapest_seller}</strong>.
+                                </p>
+                            </div>
+                            """, 
+                            unsafe_allow_html=True
+                        )
+                        
+                        # Create scatter chart showing prices over time
+                        st.subheader(f"Variação de Preços ao Longo do Tempo para '{selected_product}'")
+                        st.scatter_chart(
+                            data=df,
+                            x='date',
+                            y='unit_price',
+                            color='seller_name',
+                            size=100,
+                            height=500
+                        )
+                        
+                        # Show detailed data table
+                        st.subheader("Dados Detalhados")
+                        st.dataframe(df[['product_name', 'unit_price', 'date', 'seller_name']].sort_values('date', ascending=False))
+                    else:
+                        st.warning("Nenhum dado de preço encontrado para este produto.")
+                else:
+                    st.error("Falha ao buscar dados de comparação de preços.")
+            else:
+                st.info("Selecione um produto para ver a comparação de preços.")
+        else:
+            st.warning("Não foi possível carregar os dados de itens fiscais.")
 
 
 if __name__ == "__main__":
