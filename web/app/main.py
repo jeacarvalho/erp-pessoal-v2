@@ -33,13 +33,14 @@ class ERPApp:
         self.content_area: Optional[ft.Container] = None
         
         # Cliente HTTP
-        self.http_client = httpx.Client(base_url=BACKEND_URL, timeout=5.0)
+        self.http_client = httpx.Client(base_url=BACKEND_URL, timeout=30.0)
         
         # Dados em cache
         self.categories: List[Dict[str, Any]] = []
         self.fiscal_items: List[Dict[str, Any]] = []
         
         # Verifica se o backend está disponível antes de iniciar a UI
+        print("DEBUG: Verificando saúde do backend...")
         if not self.check_backend_health():
             print("ERRO: Backend não está respondendo. Verifique se o servidor está rodando em http://localhost:8000")
             self.page.add(
@@ -48,18 +49,25 @@ class ERPApp:
                     ft.Text(f"Verifique se o servidor está rodando em {BACKEND_URL}/docs", style="bodyLarge"),
                 ])
             )
+            self.page.update()
             return
             
+        print("DEBUG: Backend saudável, iniciando UI...")
         self.setup_ui()
+        print("DEBUG: setup_ui concluído")
 
     def check_backend_health(self) -> bool:
         """Verifica se o backend está saudável."""
         try:
+            print(f"DEBUG: Tentando conectar ao backend em {BACKEND_URL}/health")
             response = self.http_client.get("/health")  # Usando o novo endpoint de health check
+            print(f"DEBUG: Resposta do backend: status={response.status_code}, content={response.text[:200]}")
             return response.status_code == 200
         except Exception as e:
             print(f"ERRO: Backend não está respondendo. Verifique se o servidor está rodando em {BACKEND_URL}/health")
             print(f"Detalhes do erro: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def setup_ui(self):
@@ -615,8 +623,24 @@ class ERPApp:
 
 def main(page: ft.Page):
     """Função principal que inicializa o app."""
-    app = ERPApp(page)
-    page.on_close = lambda _: app.cleanup()
+    print("DEBUG: Função main chamada")
+    try:
+        app = ERPApp(page)
+        print("DEBUG: ERPApp instanciado com sucesso")
+        page.on_close = lambda _: app.cleanup()
+        print("DEBUG: main concluída com sucesso")
+    except Exception as e:
+        print(f"ERRO: Exceção na função main: {e}")
+        import traceback
+        traceback.print_exc()
+        # Adiciona mensagem de erro na página
+        page.add(
+            ft.Column([
+                ft.Text("Ocorreu um erro ao inicializar o aplicativo!", style="headlineMedium", color="red"),
+                ft.Text(f"Erro: {str(e)}", style="bodyLarge"),
+            ])
+        )
+        page.update()
 
 
 if __name__ == "__main__":
