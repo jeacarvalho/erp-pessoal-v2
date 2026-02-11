@@ -6,10 +6,33 @@ __pycache__/
 *.pyd
 
 # Dependencies
-.venv/
 venv/
-env/
+.venv/
 .env
 .env.local
 .env.*
+
+# Logs
+*.log
+
+# Tests
+.pytest_cache/
+.coverage
+coverage/
+htmlcov/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# System
+.DS_Store
+Thumbs.db
 ```

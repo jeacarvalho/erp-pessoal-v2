@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import logging
 import os
 from typing import Generator, List, Optional
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from pydantic import BaseModel, HttpUrl
 
@@ -16,10 +17,14 @@ from .models import (
     FiscalNote,
     FiscalSourceType,
 )
-from .schemas import CategoryOut, TransactionCreate, TransactionOut
+from .schemas import CategoryOut, FiscalItemOut, FiscalNoteOut, TransactionCreate, TransactionOut
 from .seed import get_session_factory, seed_categories
 from .services.scraper_handler import ScraperImporter
 from .services.xml_handler import ParsedNote, XMLProcessor
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 # Configuração de banco de dados
@@ -147,6 +152,7 @@ def create_transaction(
 
     db.add(transaction)
     db.commit()
+    logger.info(f"Transaction committed to database: ID {transaction.id}")
     db.refresh(transaction)
 
     return TransactionOut.model_validate(transaction)
@@ -198,6 +204,7 @@ def _persist_parsed_note(
         db.add(fiscal_item)
 
     db.commit()
+    logger.info(f"Fiscal note and items committed to database: ID {note.id}")
     db.refresh(note)
     return note
 
@@ -256,6 +263,56 @@ def import_url(
         "seller_name": note.seller_name,
         "total_amount": note.total_amount,
     }
+
+
+@app.get("/fiscal-notes", response_model=List[FiscalNoteOut])
+def list_fiscal_notes(
+    date_from: Optional[date] = Query(
+        default=None,
+        description="Data inicial para filtragem (formato ISO YYYY-MM-DD).",
+    ),
+    date_to: Optional[date] = Query(
+        default=None,
+        description="Data final para filtragem (formato ISO YYYY-MM-DD).",
+    ),
+    seller_name: Optional[str] = Query(
+        default=None,
+        description="Nome parcial ou completo do estabelecimento para filtragem.",
+    ),
+    db: Session = Depends(get_db),
+) -> List[FiscalNoteOut]:
+    """Lista notas fiscais importadas com filtros opcionais."""
+    
+    stmt = select(FiscalNote).options(joinedload(FiscalNote.items)).order_by(FiscalNote.date.desc())
+    
+    if date_from is not None:
+        stmt = stmt.where(FiscalNote.date >= date_from)
+    
+    if date_to is not None:
+        stmt = stmt.where(FiscalNote.date <= date_to)
+        
+    if seller_name is not None:
+        stmt = stmt.where(FiscalNote.seller_name.ilike(f"%{seller_name}%"))
+    
+    result = db.execute(stmt)
+    notes = result.unique().scalars().all()
+    
+    return [FiscalNoteOut.model_validate(note) for note in notes]
+
+
+@app.get("/fiscal-notes/{note_id}", response_model=FiscalNoteOut)
+def get_fiscal_note(note_id: int, db: Session = Depends(get_db)) -> FiscalNoteOut:
+    """Retorna os detalhes de uma nota fiscal específica, incluindo seus itens."""
+    
+    note = db.query(FiscalNote).options(joinedload(FiscalNote.items)).filter(FiscalNote.id == note_id).first()
+    
+    if note is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Nota fiscal com ID {note_id} não encontrada."
+        )
+    
+    return FiscalNoteOut.model_validate(note)
 
 
 @app.get("/fiscal-items")
