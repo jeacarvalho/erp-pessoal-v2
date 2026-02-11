@@ -5,7 +5,10 @@ from typing import Set
 
 from fastapi.testclient import TestClient
 
-from backend.app.main import SQLITE_DB_PATH, app
+from backend.app.main import SQLITE_DB_PATH, app, get_db
+from backend.app.seed import seed_categories
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 
 def _configure_test_database() -> None:
@@ -23,8 +26,29 @@ def _configure_test_database() -> None:
     if os.path.exists(db_path):
         os.remove(db_path)
 
+    # Força a execução do seed para garantir categorias no banco de teste
+    database_url = f"sqlite:///./{db_path}"
+    seed_categories(database_url)
+
 
 _configure_test_database()
+
+# Create a separate database session for the test client
+test_db_url = f"sqlite:///./{os.getenv('SQLITE_DB_PATH', 'test_api.db')}"
+test_engine = create_engine(test_db_url, connect_args={"check_same_thread": False})
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+
+
+def override_get_db():
+    try:
+        db = TestingSessionLocal()
+        yield db
+    finally:
+        db.close()
+
+
+# Override the dependency
+app.dependency_overrides[get_db] = override_get_db
 
 client = TestClient(app)
 
