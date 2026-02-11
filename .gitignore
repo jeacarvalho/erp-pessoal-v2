@@ -1,1 +1,15 @@
-Nothing should be ignored since the changes only include source code files (.py) without any build artifacts, dependencies, or temporary files.
+```gitignore
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Dependencies
+.venv/
+venv/
+env/
+.env
+.env.local
+.env.*
+```
