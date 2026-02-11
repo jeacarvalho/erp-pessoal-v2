@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 import flet as ft
 import httpx
+import asyncio
 
 
 # Configuração da URL do backend
@@ -34,6 +35,7 @@ class ERPApp:
         
         # Cliente HTTP
         self.http_client = httpx.Client(base_url=BACKEND_URL, timeout=30.0)
+        self.async_http_client = httpx.AsyncClient(base_url=BACKEND_URL, timeout=5.0)
         
         # Dados em cache
         self.categories: List[Dict[str, Any]] = []
@@ -317,18 +319,28 @@ class ERPApp:
     def build_categorias_view(self) -> ft.Column:
         """Constrói a visualização de Categorias."""
         
-        # Lista de categorias
-        categories_list = ft.ListView(spacing=10, padding=10, expand=True)
+        # Container para o conteúdo
+        content_container = ft.Container(expand=True)
         
-        def load_categories():
+        async def load_categories():
             """Carrega as categorias do backend."""
             try:
-                response = self.http_client.get("/categories")
+                # Mostra o indicador de progresso
+                content_container.content = ft.Column([
+                    ft.ProgressRing(),
+                    ft.Text("Carregando categorias...")
+                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+                self.page.update()
+                
+                # Faz a requisição assíncrona com timeout de 5 segundos
+                response = await self.async_http_client.get("/categories")
                 response.raise_for_status()
                 self.categories = response.json()
                 
-                categories_list.controls = [
-                    ft.Card(
+                # Cria a lista de categorias
+                categories_controls = []
+                for cat in self.categories:
+                    card = ft.Card(
                         content=ft.Container(
                             content=ft.ListTile(
                                 title=ft.Text(cat["name"]),
@@ -339,11 +351,27 @@ class ERPApp:
                             padding=10,
                         )
                     )
-                    for cat in self.categories
-                ]
+                    categories_controls.append(card)
                 
+                # Substitui o conteúdo pelo resultado
+                content_container.content = ft.ListView(
+                    controls=categories_controls,
+                    spacing=10,
+                    padding=10,
+                    expand=True
+                )
                 self.page.update()
                 
+            except httpx.TimeoutException:
+                # Em caso de timeout, mostra mensagem de erro com botão para tentar novamente
+                content_container.content = ft.Column([
+                    ft.Text("Erro: Backend demorou muito a responder.", color="red"),
+                    ft.ElevatedButton(
+                        "Clique para tentar novamente",
+                        on_click=lambda e: asyncio.create_task(load_categories())
+                    )
+                ], horizontal_alignment=ft.CrossAxisAlignment.CENTER)
+                self.page.update()
             except Exception as ex:
                 # Tratamento de Exceção: Mostra o erro em um AlertDialog
                 dialog = ft.AlertDialog(
@@ -357,13 +385,13 @@ class ERPApp:
                 self.page.update()
         
         # Carrega dados iniciais
-        load_categories()
+        asyncio.create_task(load_categories())
         
         return ft.Column(
             [
                 ft.Text("Categorias", size=24, weight=ft.FontWeight.BOLD),
                 ft.Divider(),
-                categories_list,
+                content_container,
             ],
             expand=True,
         )
@@ -632,6 +660,7 @@ class ERPApp:
     def cleanup(self):
         """Limpa recursos ao fechar o app."""
         self.http_client.close()
+        asyncio.run(self.async_http_client.aclose())
 
 
 def main(page: ft.Page):
