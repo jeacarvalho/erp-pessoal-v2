@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from datetime import date
 from typing import Generator, List, Optional
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from pydantic import BaseModel, HttpUrl
@@ -348,6 +349,57 @@ def list_fiscal_items(
         })
     
     return items
+
+
+def clean_product_name(product_name: str) -> str:
+    """
+    Função para limpar nomes de produtos removendo caracteres especiais
+    e convertendo para minúsculas para melhor comparação.
+    """
+    if not product_name:
+        return ""
+    # Remove caracteres especiais e espaços extras, converte para minúsculas
+    cleaned = re.sub(r'[^\w\s]', ' ', product_name.lower())
+    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+    return cleaned
+
+
+@app.get("/analytics/price-comparison")
+def get_price_comparison(
+    product_name: str = Query(..., description="Nome do produto para comparação de preços"),
+    db: Session = Depends(get_db),
+) -> List[dict]:
+    """Endpoint para comparar preços de produtos entre diferentes mercados."""
+    
+    # Limpa o nome do produto para busca
+    cleaned_product_name = clean_product_name(product_name)
+    
+    # Consulta para obter preços de produtos similares por mercado
+    stmt = (
+        select(
+            FiscalItem.product_name,
+            FiscalItem.unit_price,
+            FiscalNote.date,
+            FiscalNote.seller_name
+        )
+        .join(FiscalNote, FiscalItem.note_id == FiscalNote.id)
+        .where(func.lower(FiscalItem.product_name).contains(cleaned_product_name))
+        .order_by(FiscalNote.date.desc())
+    )
+    
+    result = db.execute(stmt)
+    rows = result.all()
+    
+    comparison_data = []
+    for product_name, unit_price, date, seller_name in rows:
+        comparison_data.append({
+            "product_name": product_name,
+            "unit_price": float(unit_price),
+            "date": date.isoformat(),
+            "seller_name": seller_name,
+        })
+    
+    return comparison_data
 
 
 __all__ = ["app", "get_db", "DATABASE_URL", "SQLITE_DB_PATH"]
