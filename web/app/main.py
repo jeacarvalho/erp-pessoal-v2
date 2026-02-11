@@ -119,8 +119,8 @@ class ERPApp:
                     label="Importar",
                 ),
                 ft.NavigationRailDestination(
-                    icon=ft.icons.REFRESH,
-                    selected_icon=ft.icons.REFRESH,
+                    icon=ft.icons.REFRESH_ROUNDED,
+                    selected_icon=ft.icons.REFRESH_ROUNDED,
                     label="Sincronizar",
                 ),
             ],
@@ -793,21 +793,14 @@ def main(page: ft.Page):
     print("DEBUG: UI Montada, aguardando interação")
     
     try:
+        page.clean()
         app = ERPApp(page)
         print("DEBUG: ERPApp instanciado com sucesso")
         page.on_close = lambda _: app.cleanup()
         print("DEBUG: main concluída com sucesso")
     except Exception as e:
-        print(f"ERRO: Exceção na função main: {e}")
-        import traceback
-        traceback.print_exc()
-        # Adiciona mensagem de erro na página
-        page.add(
-            ft.Column([
-                ft.Text("Ocorreu um erro ao inicializar o aplicativo!", style="headlineMedium", color="red"),
-                ft.Text(f"Erro: {str(e)}", style="bodyLarge"),
-            ])
-        )
+        print(f"ERRO CRÍTICO: {e}")
+        page.add(ft.Text(f"Erro ao carregar interface: {e}", color="red"))
         page.update()
     
     # Comando de Update: Garantido que existe ao final da função main
