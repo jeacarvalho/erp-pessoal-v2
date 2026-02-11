@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -12,6 +12,33 @@ class CategoryOut(BaseModel):
     id: int
     name: str
     parent_id: Optional[int] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FiscalItemOut(BaseModel):
+    """Schema de saída para itens fiscais."""
+
+    id: int
+    product_name: str
+    quantity: float
+    unit_price: float
+    total_price: float
+    category_id: Optional[int] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FiscalNoteOut(BaseModel):
+    """Schema de saída para notas fiscais com seus itens."""
+
+    id: int
+    date: date
+    total_amount: float
+    seller_name: str
+    access_key: str
+    source_type: str
+    items: List[FiscalItemOut]
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -42,6 +69,8 @@ class TransactionOut(BaseModel):
 
 __all__ = [
     "CategoryOut",
+    "FiscalItemOut",
+    "FiscalNoteOut",
     "TransactionCreate",
     "TransactionOut",
 ]
