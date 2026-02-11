@@ -80,12 +80,59 @@ class DefaultSefazAdapter(BaseSefazAdapter):
         return "Estabelecimento Desconhecido"
 
     def _extract_access_key(self, soup: BeautifulSoup) -> str:
-        # Procura por elementos que possam conter a chave de acesso
-        # Normalmente está em um span, div ou strong com termos como "Chave de Acesso", "Chave de acesso", etc.
+        # First, try to find the access key using specific HTML elements
+        # Look for elements near "Chave de acesso" text
+        import re
+        
+        # Look for span elements with class 'chave' which often contain the access key
+        chave_spans = soup.find_all('span', class_='chave')
+        if chave_spans:
+            raw_key = chave_spans[0].get_text(strip=True)
+            # Clean up the key (remove spaces, check if it's 44 digits)
+            clean_key = re.sub(r'\s+', '', raw_key)
+            if len(clean_key) == 44 and clean_key.isdigit():
+                # Format the key nicely with spaces every 4 digits
+                formatted_key = ' '.join([clean_key[i:i+4] for i in range(0, len(clean_key), 4)])
+                return formatted_key
+        
+        # Also look for strong tags that might contain "Chave de acesso" followed by the key
+        strong_tags = soup.find_all('strong')
+        for tag in strong_tags:
+            if 'chave de acesso' in tag.get_text(strip=True).lower():
+                # Look for the next sibling that might contain the key
+                next_sibling = tag.next_sibling
+                while next_sibling and len(next_sibling.strip()) == 0:
+                    next_sibling = next_sibling.next_sibling
+                if next_sibling and isinstance(next_sibling, str):
+                    # Extract potential key from the text following the "Chave de acesso" tag
+                    potential_key = next_sibling.strip()
+                    # Clean up the key
+                    clean_key = re.sub(r'[^\d\s]', '', potential_key)  # Keep only digits and spaces
+                    clean_key = re.sub(r'\s+', '', clean_key)  # Remove all spaces temporarily
+                    if len(clean_key) == 44 and clean_key.isdigit():
+                        # Format the key nicely with spaces every 4 digits
+                        formatted_key = ' '.join([clean_key[i:i+4] for i in range(0, len(clean_key), 4)])
+                        return formatted_key
+                
+                # Also check parent's siblings
+                parent = tag.parent
+                if parent:
+                    # Look for spans or other elements within the parent that might contain the key
+                    for child in parent.children:
+                        if child != tag and hasattr(child, 'get_text'):
+                            child_text = child.get_text(strip=True)
+                            if child_text and len(child_text) >= 44:
+                                # Clean up the key
+                                clean_key = re.sub(r'\s+', '', child_text)
+                                if len(clean_key) == 44 and clean_key.isdigit():
+                                    # Format the key nicely with spaces every 4 digits
+                                    formatted_key = ' '.join([clean_key[i:i+4] for i in range(0, len(clean_key), 4)])
+                                    return formatted_key
+        
+        # If the specific element approach didn't work, fall back to the original text-based approach
         text = soup.get_text(" ", strip=True)
         
         # Procura por padrões de chave de acesso (44 dígitos)
-        import re
         # Procura por padrões com espaços ou sem espaços (ex: 3326 0210 6976 9700 0660 6510 7000 3680 6612 6649 4182 ou 33260210697697000660651070003680661266494182)
         patterns = [
             r'Chave\s*de\s*Acesso[^\d]*([0-9\s]{40,50})',  # "Chave de Acesso" followed by digits/spaces
@@ -240,12 +287,59 @@ class RJSefazNFCeAdapter(BaseSefazAdapter):
         return "Estabelecimento Desconhecido"
 
     def _extract_access_key(self, soup: BeautifulSoup) -> str:
-        # Procura por elementos que possam conter a chave de acesso
-        # Normalmente está em um span, div ou strong com termos como "Chave de Acesso", "Chave de acesso", etc.
+        # First, try to find the access key using specific HTML elements
+        # Look for elements near "Chave de acesso" text
+        import re
+        
+        # Look for span elements with class 'chave' which often contain the access key
+        chave_spans = soup.find_all('span', class_='chave')
+        if chave_spans:
+            raw_key = chave_spans[0].get_text(strip=True)
+            # Clean up the key (remove spaces, check if it's 44 digits)
+            clean_key = re.sub(r'\s+', '', raw_key)
+            if len(clean_key) == 44 and clean_key.isdigit():
+                # Format the key nicely with spaces every 4 digits
+                formatted_key = ' '.join([clean_key[i:i+4] for i in range(0, len(clean_key), 4)])
+                return formatted_key
+        
+        # Also look for strong tags that might contain "Chave de acesso" followed by the key
+        strong_tags = soup.find_all('strong')
+        for tag in strong_tags:
+            if 'chave de acesso' in tag.get_text(strip=True).lower():
+                # Look for the next sibling that might contain the key
+                next_sibling = tag.next_sibling
+                while next_sibling and len(next_sibling.strip()) == 0:
+                    next_sibling = next_sibling.next_sibling
+                if next_sibling and isinstance(next_sibling, str):
+                    # Extract potential key from the text following the "Chave de acesso" tag
+                    potential_key = next_sibling.strip()
+                    # Clean up the key
+                    clean_key = re.sub(r'[^\d\s]', '', potential_key)  # Keep only digits and spaces
+                    clean_key = re.sub(r'\s+', '', clean_key)  # Remove all spaces temporarily
+                    if len(clean_key) == 44 and clean_key.isdigit():
+                        # Format the key nicely with spaces every 4 digits
+                        formatted_key = ' '.join([clean_key[i:i+4] for i in range(0, len(clean_key), 4)])
+                        return formatted_key
+                
+                # Also check parent's siblings
+                parent = tag.parent
+                if parent:
+                    # Look for spans or other elements within the parent that might contain the key
+                    for child in parent.children:
+                        if child != tag and hasattr(child, 'get_text'):
+                            child_text = child.get_text(strip=True)
+                            if child_text and len(child_text) >= 44:
+                                # Clean up the key
+                                clean_key = re.sub(r'\s+', '', child_text)
+                                if len(clean_key) == 44 and clean_key.isdigit():
+                                    # Format the key nicely with spaces every 4 digits
+                                    formatted_key = ' '.join([clean_key[i:i+4] for i in range(0, len(clean_key), 4)])
+                                    return formatted_key
+        
+        # If the specific element approach didn't work, fall back to the original text-based approach
         text = soup.get_text(" ", strip=True)
         
         # Procura por padrões de chave de acesso (44 dígitos)
-        import re
         # Procura por padrões com espaços ou sem espaços (ex: 3326 0210 6976 9700 0660 6510 7000 3680 6612 6649 4182 ou 33260210697697000660651070003680661266494182)
         patterns = [
             r'Chave\s*de\s*Acesso[^\d]*([0-9\s]{40,50})',  # "Chave de Acesso" followed by digits/spaces
