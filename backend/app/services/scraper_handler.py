@@ -690,113 +690,202 @@ class RJSefazNFCeAdapter(BaseSefazAdapter):
     def _extract_items(self, soup: BeautifulSoup) -> List[ParsedItem]:
         items: List[ParsedItem] = []
 
-        # Estratégia baseada em texto global: no layout do RJ, os dados estão
-        # organizados em linhas separadas sequenciais
-        full_text = soup.get_text("\n", strip=True)
-        print("[RJ-Adapter] Texto completo (primeiras 500 chars):")
-        print(full_text[:500])
-        lines = [ln.strip() for ln in full_text.splitlines() if ln.strip()]
-        print(f"[RJ-Adapter] Total de linhas: {len(lines)}")
+        # Primeiro tenta encontrar a tabela específica de itens com ID "tabResult"
+        # que é usada no layout SEFAZ-RJ conforme o HTML fornecido
+        table = soup.find("table", {"id": "tabResult"})
+        
+        if table:
+            # Processa a tabela específica de itens
+            rows = table.find_all("tr")
+            for row in rows:
+                # Verifica se é uma linha de item (tem ID começando com "Item + ")
+                row_id = row.get("id", "")
+                if row_id and row_id.startswith("Item + "):
+                    # Extrai os dados do item
+                    tds = row.find_all("td")
+                    if len(tds) >= 2:
+                        # Primeira célula contém nome, código, quantidade, unidade e preço unitário
+                        first_td = tds[0]
+                        
+                        # Extrai o nome do produto (texto com classe "txtTit")
+                        name_element = first_td.find("span", class_="txtTit")
+                        if name_element:
+                            name = name_element.get_text(strip=True)
+                            
+                            # Log if the name is "NITEROI" to help debug the issue
+                            if name.lower() == "niteroi":
+                                logger.warning(f"[fiscal-items] Item encontrado com nome 'NITEROI'. Conteúdo completo do first_td: {first_td}")
+                                logger.warning(f"[fiscal-items] Texto do elemento txtTit: {name}")
+                                
+                        else:
+                            # Se não encontrar com span txtTit, tenta extrair o primeiro texto significativo
+                            # que não seja parte dos spans com informações adicionais
+                            all_text = first_td.get_text(separator='|', strip=True)
+                            # Divide pelo separador e pega a primeira parte que parece ser o nome do produto
+                            parts = all_text.split('|')
+                            # Filtra partes vazias e busca a que parece ser o nome do produto
+                            for part in parts:
+                                part = part.strip()
+                                # Ignora partes que contêm códigos, quantidades ou preços
+                                if part and not any(keyword in part.lower() for keyword in ['código', 'qtde', 'un:', 'vl. unit', 'r$', 'valor']) and len(part) > 3:
+                                    # Certifique-se de que não é um texto irrelevante como "NITEROI"
+                                    if part.lower() != "niteroi":
+                                        name = part
+                                        break
+                            else:
+                                name = ""
+                                
+                        # Se ainda assim o nome for "NITEROI", tenta obter de forma mais específica
+                        if name.lower() == "niteroi" or not name:
+                            # Tenta encontrar o nome do produto olhando apenas para os textos dentro do td
+                            # excluindo explicitamente spans com outras informações
+                            direct_children_texts = []
+                            for child in first_td.children:
+                                if hasattr(child, 'name') and child.name not in ['span']:
+                                    # Child is a NavigableString, get its text
+                                    if child is not None:
+                                        # Get the text content of the child and strip it
+                                        child_text = str(child).strip()
+                                        if child_text:
+                                            direct_children_texts.append(child_text)
+                                elif hasattr(child, 'name') and child.name == 'span':
+                                    # Verifica se é um span com nome do produto (txtTit) ou outro tipo
+                                    if 'txtTit' in child.get('class', []) and child.get_text(strip=True).lower() != 'niteroi':
+                                        name = child.get_text(strip=True)
+                                        break
+                                    
+                            if not name and direct_children_texts:
+                                # Usa o primeiro texto direto que não seja "NITEROI"
+                                for text in direct_children_texts:
+                                    if text.lower() != 'niteroi':
+                                        name = text
+                                        break
+                        
+                        # Extrai quantidade e unidade dos spans
+                        qty_text = "0"
+                        unit_text = "UN"
+                        
+                        qtd_span = first_td.find("span", class_="Rqtd")
+                        if qtd_span:
+                            qtd_str = qtd_span.get_text(strip=True)
+                            # Extrai número após "Qtde.:" ou "Qtde:"
+                            import re
+                            qty_match = re.search(r'Qtde\.?:?\s*([0-9,.]+)', qtd_str, re.IGNORECASE)
+                            if qty_match:
+                                qty_text = qty_match.group(1)
+                        
+                        un_span = first_td.find("span", class_="RUN")
+                        if un_span:
+                            un_str = un_span.get_text(strip=True)
+                            # Extrai unidade após "UN: "
+                            un_match = re.search(r'UN:\s*(\w+)', un_str, re.IGNORECASE)
+                            if un_match:
+                                unit_text = un_match.group(1)
+                        
+                        # Extrai preço unitário
+                        unit_price_text = "0"
+                        price_span = first_td.find("span", class_="RvlUnit")
+                        if price_span:
+                            price_str = price_span.get_text(strip=True)
+                            # Extrai número após "Vl. Unit.:" ou similar
+                            price_match = re.search(r'Vl\.?\s*Unit\.?:?\s*([0-9,.]+)', price_str, re.IGNORECASE)
+                            if price_match:
+                                unit_price_text = price_match.group(1)
+                        
+                        # Segunda célula contém o valor total
+                        total_cell = tds[1].find("span", class_="valor") if len(tds) > 1 else None
+                        total_price_text = total_cell.get_text(strip=True) if total_cell else unit_price_text
 
-        def _to_float(value: str) -> float:
-            return float(value.replace(".", "").replace(",", "."))
+                        def _to_float(value: str) -> float:
+                            return float(value.replace(".", "").replace(",", "."))
 
-        i = 0
-        while i < len(lines):
-            line = lines[i]
-            
-            # Procura por linhas que contêm "Qtde.:" ou "Qtde:"
-            if re.match(r"Qtde\.?:", line, re.IGNORECASE):
-                print(f"[RJ-Adapter] Encontrado início de item na linha #{i}: {line}")
-                
-                # Tenta extrair os dados das próximas linhas
-                try:
-                    # Linha atual pode ter "Qtde.:" ou só o valor na próxima
-                    if ":" in line and len(line) > 6:
-                        # Formato: "Qtde.: 1" ou "Qtde.:1"
-                        qty_text = line.split(":", 1)[1].strip()
-                        next_line_offset = 1
-                    else:
-                        # Formato: linha com "Qtde.:" e valor na próxima linha
-                        qty_text = lines[i + 1] if i + 1 < len(lines) else "0"
-                        next_line_offset = 2
-                    
-                    # Busca UN:, Vl. Unit.:, Vl. Total nas próximas linhas
-                    unit = ""
-                    unit_price = 0.0
-                    total_price = 0.0
-                    name = ""
-                    
-                    # Nome do produto: algumas linhas antes (ignora códigos e linhas especiais)
-                    for j in range(max(0, i - 8), i):
-                        candidate = lines[j]
-                        # Ignora linhas com "Código:", "Clear text", números puros, etc.
-                        if candidate and len(candidate) > 3:
-                            # Pula linhas que são apenas números (códigos)
-                            if candidate.isdigit():
-                                continue
-                            # Pula linhas especiais
-                            if any(x in candidate for x in ["Código", "Clear text", "(Código"]):
-                                continue
-                            # Pula linhas com palavras-chave de campos
-                            if any(x in candidate.lower() for x in ["qtde", "vl.", "un:", "cnpj", "documento auxiliar", ")"]):
-                                continue
-                            # Aceita apenas se tem letras (não só números e símbolos)
-                            if any(c.isalpha() for c in candidate):
-                                name = candidate
-                                break
-                    
-                    # Procura os outros campos nas próximas 10 linhas
-                    for j in range(i + next_line_offset, min(i + 15, len(lines))):
-                        current = lines[j]
-                        
-                        if re.match(r"UN:", current, re.IGNORECASE):
-                            # Próxima linha tem a unidade
-                            if j + 1 < len(lines):
-                                unit = lines[j + 1]
-                        
-                        elif re.match(r"Vl\.?\s*Unit\.?:", current, re.IGNORECASE):
-                            # Próxima linha tem o preço unitário
-                            if j + 1 < len(lines):
-                                try:
-                                    unit_price = _to_float(lines[j + 1])
-                                except:
-                                    pass
-                        
-                        elif re.match(r"Vl\.?\s*Total", current, re.IGNORECASE):
-                            # Próxima linha tem o total
-                            if j + 1 < len(lines):
-                                try:
-                                    total_price = _to_float(lines[j + 1])
-                                except:
-                                    pass
-                            break  # Fim dos dados deste item
-                    
-                    # Converte quantidade
-                    try:
-                        qty = _to_float(qty_text)
-                    except:
-                        qty = 0.0
-                    
-                    if name and qty > 0:
-                        print(f"[RJ-Adapter] Item encontrado: {name} - Qtd: {qty}, Unit: {unit}, Preço Unit: {unit_price}, Total: {total_price}")
-                        items.append(
-                            ParsedItem(
-                                name=name,
-                                quantity=qty,
-                                unit=unit or "UN",
-                                unit_price=unit_price,
-                                total_price=total_price,
+                        try:
+                            quantity = _to_float(qty_text)
+                        except ValueError:
+                            quantity = 0.0
+                        try:
+                            unit_price = _to_float(unit_price_text)
+                        except ValueError:
+                            unit_price = 0.0
+                        try:
+                            total_price = _to_float(total_price_text)
+                        except ValueError:
+                            total_price = unit_price * quantity
+
+                        if name and name.lower() != "niteroi":  # Filtra o item incorreto "NITERÓI"
+                            items.append(
+                                ParsedItem(
+                                    name=name,
+                                    quantity=quantity,
+                                    unit=unit_text,
+                                    unit_price=unit_price,
+                                    total_price=total_price,
+                                )
                             )
+        else:
+            # Fallback: estratégia genérica para outros layouts
+            for table in soup.find_all("table"):
+                rows = table.find_all("tr")
+                if len(rows) < 2:
+                    continue
+                header_cols = rows[0].find_all(["th", "td"])
+                if len(header_cols) < 3:
+                    continue
+
+                # Considera que as demais linhas representam itens.
+                for row in rows[1:]:
+                    cols = row.find_all("td")
+                    if len(cols) < 3:
+                        continue
+                    name = cols[0].get_text(strip=True)
+                    
+                    # Adiciona filtro para evitar pegar o nome da cidade como item
+                    if name.lower() == "niteroi":
+                        continue
+                        
+                    qty_text = cols[1].get_text(strip=True) or "0"
+                    unit_text = cols[2].get_text(strip=True)
+                    unit_price_text = (
+                        cols[3].get_text(strip=True) if len(cols) > 3 else "0"
+                    )
+                    total_price_text = (
+                        cols[4].get_text(strip=True) if len(cols) > 4 else unit_price_text
+                    )
+
+                    def _to_float(value: str) -> float:
+                        return float(value.replace(".", "").replace(",", "."))
+
+                    try:
+                        quantity = _to_float(qty_text)
+                    except ValueError:
+                        quantity = 0.0
+                    try:
+                        unit_price = _to_float(unit_price_text)
+                    except ValueError:
+                        unit_price = 0.0
+                    try:
+                        total_price = _to_float(total_price_text)
+                    except ValueError:
+                        total_price = unit_price * quantity
+
+                    if not name:
+                        continue
+
+                    items.append(
+                        ParsedItem(
+                            name=name,
+                            quantity=quantity,
+                            unit=unit_text,
+                            unit_price=unit_price,
+                            total_price=total_price,
                         )
-                
-                except Exception as e:
-                    print(f"[RJ-Adapter] Erro ao processar item: {e}")
-            
-            i += 1
+                    )
+
+                if items:
+                    break
 
         if not items:
-            raise ValueError("Não foi possível localizar itens da NFC-e do RJ no HTML.")
+            raise ValueError("Não foi possível localizar itens da nota na página HTML.")
 
         return items
 
