@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import date
+import json
+import os
 import re
 from typing import Dict, List, Type
 from uuid import uuid4
@@ -629,13 +631,43 @@ class RJSefazNFCeAdapter(BaseSefazAdapter):
 class ScraperImporter:
     """Fachada para importação de NFC-e via URL com arquitetura de adapters."""
 
-    def __init__(self) -> None:
+    def __init__(self, backup_file_path: str = "../data/processed_urls_backup.json") -> None:
         # Registro de adapters por "chave" (por exemplo, UF, domínio, etc.).
         # Por enquanto, usamos apenas um adapter padrão.
         self._adapters: Dict[str, Type[BaseSefazAdapter]] = {
             "default": DefaultSefazAdapter,
             "rj_nfe_moderno": RJSefazNFCeAdapter,
         }
+        self.backup_file_path = backup_file_path
+        self._ensure_backup_directory()
+        self._load_processed_urls_from_backup()
+
+    def _ensure_backup_directory(self) -> None:
+        """Ensure the backup directory exists."""
+        backup_dir = os.path.dirname(self.backup_file_path)
+        os.makedirs(backup_dir, exist_ok=True)
+
+    def _load_processed_urls_from_backup(self) -> None:
+        """Load processed URLs from backup file."""
+        try:
+            if os.path.exists(self.backup_file_path):
+                with open(self.backup_file_path, 'r', encoding='utf-8') as f:
+                    self._processed_urls = set(json.load(f))
+            else:
+                self._processed_urls = set()
+        except Exception:
+            # If there's any error reading the backup file, initialize with empty set
+            self._processed_urls = set()
+
+    def _save_processed_url_to_backup(self, url: str) -> None:
+        """Save a processed URL to the backup file."""
+        self._processed_urls.add(url)
+        try:
+            with open(self.backup_file_path, 'w', encoding='utf-8') as f:
+                json.dump(list(self._processed_urls), f, ensure_ascii=False, indent=2)
+        except Exception:
+            # If we can't save to backup, just continue processing
+            pass
 
     def _select_adapter_key(self, url: str) -> str:
         """Retorna a chave do adapter apropriado para a URL."""
@@ -672,7 +704,10 @@ class ScraperImporter:
             # Se já parecer bloqueio no requests, pula direto para browser.
             if not _looks_like_sefaz_block_page(html_requests):
                 try:
-                    return adapter.parse(html_requests)
+                    result = adapter.parse(html_requests)
+                    # Save URL to backup after successful processing
+                    self._save_processed_url_to_backup(url)
+                    return result
                 except ValueError:
                     pass
 
@@ -684,7 +719,10 @@ class ScraperImporter:
                 "SEFAZ bloqueou o acesso a partir deste IP (mesmo via browser). "
                 "Para importar NFC-e RJ, configure um proxy (preferencialmente residencial/rotativo)."
             )
-        return adapter.parse(html_browser)
+        result = adapter.parse(html_browser)
+        # Save URL to backup after successful processing
+        self._save_processed_url_to_backup(url)
+        return result
 
 
 __all__ = [
