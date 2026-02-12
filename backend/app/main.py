@@ -331,8 +331,13 @@ def list_fiscal_items(
     )
     
     # Aplica o limite explicitamente para garantir que o parâmetro seja corretamente bindado
+    compiled_stmt = stmt.limit(limit).compile(db.bind, compile_kwargs={"literal_binds": True})
+    logger.info(f"[fiscal-items] Statement generated: {compiled_stmt}")
+    
     result = db.execute(stmt.limit(limit))
+    logger.info(f"[fiscal-items] Database execute result type: {type(result)}")
     rows = result.all()
+    logger.info(f"[fiscal-items] Rows fetched from database: {len(rows)}")
     
     items = []
     for fiscal_item, fiscal_note in rows:
