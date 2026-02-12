@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+import time
 import logging
 import os
 import re
@@ -310,7 +310,7 @@ def restore_from_backup(db: Session = Depends(get_db)) -> dict:
         try:
             # Import the URL directly using the scraper handler
             parsed = importer.import_from_url(str(url), force_browser=False)
-            
+            time.sleep(5) 
             # Persist the parsed note to the database
             note = _persist_parsed_note(parsed, FiscalSourceType.SCRAPING, db)
             restored_count += 1
@@ -398,7 +398,7 @@ def list_fiscal_items(
     )
     
     # Aplica o limite explicitamente para garantir que o parâmetro seja corretamente bindado
-    compiled_stmt = stmt.limit(limit).compile(db.bind, compile_kwargs={"literal_binds": True})
+    compiled_stmt = stmt.limit(limit).compile(db.bind, compile_kwargs={"oliteral_binds": True})
     logger.info(f"[fiscal-items] Statement generated: {compiled_stmt}")
     
     result = db.execute(stmt.limit(limit))
