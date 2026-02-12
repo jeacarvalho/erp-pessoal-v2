@@ -519,8 +519,8 @@ def create_product_master(
         db.add(new_product)
         db.commit()
         db.refresh(new_product)
-        logger.info(f"[products/eans] Novo produto criado: ID {new_product.id}")
-        return {"message": "Produto criado com sucesso", "id": new_product.id, "ean": new_product.ean}
+        logger.info(f"[products/eans] Novo produto criado: EAN {new_product.ean}")
+        return {"message": "Produto criado com sucesso", "ean": new_product.ean}
 
 
 @app.post("/product-mappings/")
