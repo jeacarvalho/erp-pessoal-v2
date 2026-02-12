@@ -21,7 +21,7 @@ from .models import (
     ProductMapping,
     ProductMaster,
 )
-from .schemas import CategoryOut, FiscalItemOut, FiscalNoteOut, TransactionCreate, TransactionOut
+from .schemas import CategoryOut, FiscalItemOut, FiscalNoteOut, TransactionCreate, TransactionOut, ProductMappingCreate
 from .seed import get_session_factory, seed_categories
 from .services.scraper_handler import ScraperImporter
 from .services.xml_handler import ParsedNote, XMLProcessor
@@ -441,6 +441,85 @@ def list_fiscal_items(
     logger.info(f"[fiscal-items] Quantidade de itens retornados: {len(items)}")
     
     return items
+
+
+@app.get("/fiscal-items/orphans")
+def list_orphan_fiscal_items(
+    db: Session = Depends(get_db),
+) -> List[dict]:
+    """Lista os itens fiscais que ainda não possuem product_ean (órfãos)."""
+    
+    logger.info("[fiscal-items/orphans] Buscando itens fiscais órfãos (sem product_ean)")
+    
+    stmt = (
+        select(FiscalItem, FiscalNote)
+        .join(FiscalNote, FiscalItem.note_id == FiscalNote.id)
+        .where(FiscalItem.product_ean.is_(None))
+        .order_by(FiscalNote.date.desc(), FiscalItem.id.desc())
+    )
+    
+    result = db.execute(stmt)
+    rows = result.all()
+    
+    logger.info(f"[fiscal-items/orphans] Quantidade de itens órfãos encontrados: {len(rows)}")
+    
+    items = []
+    for fiscal_item, fiscal_note in rows:
+        items.append({
+            "id": fiscal_item.id,
+            "product_name": fiscal_item.product_name,
+            "quantity": fiscal_item.quantity,
+            "unit_price": fiscal_item.unit_price,
+            "total_price": fiscal_item.total_price,
+            "category_id": fiscal_item.category_id,
+            "note_id": fiscal_note.id,
+            "note_date": fiscal_note.date.isoformat(),
+            "seller_name": fiscal_note.seller_name,
+        })
+    
+    logger.info(f"[fiscal-items/orphans] Itens órfãos retornados: {len(items)}")
+    
+    return items
+
+
+@app.post("/product-mappings/")
+def create_product_mapping(
+    mapping: ProductMappingCreate,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Cria um novo mapeamento entre descrição bruta e produto EAN."""
+    
+    logger.info(f"[product-mappings] Criando mapeamento: {mapping.raw_description} -> EAN {mapping.product_ean}")
+    
+    # Verifica se o EAN existe na tabela products_master
+    product = db.query(ProductMaster).filter(ProductMaster.ean == mapping.product_ean).first()
+    if not product:
+        raise HTTPException(status_code=404, detail=f"Produto com EAN {mapping.product_ean} não encontrado")
+    
+    # Verifica se já existe um mapeamento com a mesma descrição e vendedor
+    existing_mapping = db.query(ProductMapping).filter(
+        ProductMapping.raw_description == mapping.raw_description,
+        ProductMapping.seller_name == mapping.seller_name
+    ).first()
+    
+    if existing_mapping:
+        # Atualiza o mapeamento existente
+        existing_mapping.product_ean = mapping.product_ean
+        db.commit()
+        logger.info(f"[product-mappings] Mapeamento atualizado: ID {existing_mapping.id}")
+        return {"message": "Mapeamento atualizado com sucesso", "id": existing_mapping.id}
+    else:
+        # Cria um novo mapeamento
+        new_mapping = ProductMapping(
+            raw_description=mapping.raw_description,
+            seller_name=mapping.seller_name,
+            product_ean=mapping.product_ean
+        )
+        db.add(new_mapping)
+        db.commit()
+        db.refresh(new_mapping)
+        logger.info(f"[product-mappings] Novo mapeamento criado: ID {new_mapping.id}")
+        return {"message": "Mapeamento criado com sucesso", "id": new_mapping.id}
 
 
 def clean_product_name(product_name: str) -> str:

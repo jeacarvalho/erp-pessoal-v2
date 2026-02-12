@@ -2,6 +2,10 @@ import streamlit as st
 import httpx
 import pandas as pd
 from typing import Optional
+import cv2
+import numpy as np
+from PIL import Image
+from pyzbar import pyzbar
 
 
 def fetch_data(url: str):
@@ -61,7 +65,7 @@ def main():
     st.sidebar.header("Menu de Navegação")
     page = st.sidebar.selectbox(
         "Selecione uma página:",
-        ["Dashboard", "Categorias", "Importar XML/URL", "Histórico de Preços (Inflação)", "Comparação de Preços"]
+        ["Dashboard", "Categorias", "Importar XML/URL", "Histórico de Preços (Inflação)", "Comparação de Preços", "Scanner de Produtos"]
     )
     
     if page == "Dashboard":
@@ -254,6 +258,119 @@ def main():
                 st.info("Selecione um produto para ver a comparação de preços.")
         else:
             st.warning("Não foi possível carregar os dados de itens fiscais.")
+
+    elif page == "Scanner de Produtos":
+        st.header("Scanner de Produtos - Leitura de Código de Barras")
+        
+        # Camera input for barcode scanning
+        camera_image = st.camera_input("Aponte a câmera para o código de barras do produto")
+        
+        if camera_image is not None:
+            # Convert the image to OpenCV format
+            bytes_data = camera_image.getvalue()
+            np_array = np.frombuffer(bytes_data, np.uint8)
+            img = cv2.imdecode(np_array, cv2.IMREAD_COLOR)
+            
+            # Decode the barcode
+            decoded_objects = pyzbar.decode(img)
+            
+            if decoded_objects:
+                ean_code = decoded_objects[0].data.decode("utf-8")
+                st.success(f"Código EAN detectado: **{ean_code}**")
+                
+                # Check if the EAN exists in the database
+                try:
+                    response = httpx.get(f"http://127.0.0.1:8000/products/eans/{ean_code}")
+                    if response.status_code == 200:
+                        product_info = response.json()
+                        st.info(f"Produto já cadastrado: {product_info.get('name_standard', 'Nome não disponível')}")
+                        
+                        # Show option to link orphan fiscal items to this EAN
+                        st.subheader("Vincular itens órfãos a este EAN")
+                        
+                        # Fetch orphan fiscal items (items without product_ean)
+                        try:
+                            fiscal_response = httpx.get("http://127.0.0.1:8000/fiscal-items/orphans")
+                            if fiscal_response.status_code == 200:
+                                orphan_items = fiscal_response.json()
+                                
+                                if orphan_items:
+                                    # Create a selectbox with orphan items' raw descriptions
+                                    descriptions = [item['product_name'] for item in orphan_items]
+                                    selected_description = st.selectbox(
+                                        "Selecione um item órfão para vincular a este EAN:", 
+                                        options=descriptions
+                                    )
+                                    
+                                    if selected_description:
+                                        # Find the selected item details
+                                        selected_item = next(item for item in orphan_items if item['product_name'] == selected_description)
+                                        
+                                        # Button to create mapping
+                                        if st.button("Vincular Item a este EAN"):
+                                            mapping_payload = {
+                                                "raw_description": selected_item['product_name'],
+                                                "seller_name": selected_item.get('seller_name', 'Desconhecido'),
+                                                "product_ean": int(ean_code)
+                                            }
+                                            
+                                            try:
+                                                mapping_response = httpx.post(
+                                                    "http://127.0.0.1:8000/product-mappings/", 
+                                                    json=mapping_payload
+                                                )
+                                                if mapping_response.status_code == 200:
+                                                    st.success(
+                                                        f"Sistema aprendeu a traduzir '{selected_description}' para o EAN {ean_code}! "
+                                                        f"Este vínculo será usado nas próximas importações."
+                                                    )
+                                                else:
+                                                    st.error(f"Erro ao criar vínculo: {mapping_response.text}")
+                                            except Exception as e:
+                                                st.error(f"Erro de conexão ao criar vínculo: {str(e)}")
+                                    else:
+                                        st.info("Selecione um item para vincular.")
+                                else:
+                                    st.info("Não há itens órfãos disponíveis para vinculação.")
+                            else:
+                                st.warning("Não foi possível carregar os itens órfãos.")
+                        except Exception as e:
+                            st.error(f"Erro ao buscar itens órfãos: {str(e)}")
+                    else:
+                        st.warning("Este EAN ainda não está cadastrado no sistema. Complete o cadastro abaixo:")
+                        
+                        # Form to register the product
+                        with st.form(key="register_product"):
+                            name_standard = st.text_input("Nome Amigável do Produto")
+                            
+                            # Get family member options
+                            family_members = ["Ana", "Carol", "Isabela", "Eduardo"]
+                            owner = st.selectbox("Responsável pelo produto", family_members)
+                            
+                            submit_button = st.form_submit_button("Cadastrar Produto")
+                            
+                            if submit_button and name_standard:
+                                # Register the product
+                                payload = {
+                                    "ean": ean_code,
+                                    "name_standard": name_standard,
+                                    "owner": owner
+                                }
+                                
+                                try:
+                                    register_response = httpx.post("http://127.0.0.1:8000/products/eans/", json=payload)
+                                    if register_response.status_code == 200:
+                                        st.success(f"Produto cadastrado com sucesso! EAN: {ean_code}, Nome: {name_standard}")
+                                    else:
+                                        st.error(f"Erro ao cadastrar produto: {register_response.text}")
+                                except Exception as e:
+                                    st.error(f"Erro de conexão ao cadastrar produto: {str(e)}")
+                except Exception as e:
+                    st.error(f"Erro ao verificar o EAN no banco de dados: {str(e)}")
+            else:
+                st.warning("Nenhum código de barras detectado. Tente ajustar a iluminação ou a posição do produto.")
+        else:
+            st.info("Aguardando captura de imagem...")
 
 
 if __name__ == "__main__":
