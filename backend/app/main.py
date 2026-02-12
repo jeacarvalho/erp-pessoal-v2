@@ -30,12 +30,12 @@ logger = logging.getLogger(__name__)
 
 
 # Configuração de banco de dados
-DATABASE_URL: str = os.getenv("DATABASE_URL") or f"sqlite+pysqlite:///{os.getenv('SQLITE_DB_PATH', 'app.db')}"
+DATABASE_URL: str = os.getenv("DATABASE_URL") or f"sqlite+pysqlite:///{os.getenv('SQLITE_DB_PATH', '../data/sqlite/app.db')}"
 SQLITE_DB_PATH: Optional[str] = None
 
 if not os.getenv("DATABASE_URL"):
     # Apenas faz sentido falar em arquivo físico para SQLite.
-    SQLITE_DB_PATH = os.getenv("SQLITE_DB_PATH", "app.db")
+    SQLITE_DB_PATH = os.getenv("SQLITE_DB_PATH", "../data/sqlite/app.db")
 
 SessionLocal = get_session_factory(DATABASE_URL)
 
