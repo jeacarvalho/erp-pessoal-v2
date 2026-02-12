@@ -267,6 +267,68 @@ def import_url(
     }
 
 
+@app.post("/import/restore-from-backup")
+def restore_from_backup(db: Session = Depends(get_db)) -> dict:
+    """Restaura todas as notas a partir do arquivo de backup de URLs processadas."""
+    
+    import json
+    import os
+    
+    backup_file_path = "../data/processed_urls_backup.json"
+    
+    # Check if backup file exists
+    if not os.path.exists(backup_file_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Arquivo de backup de URLs não encontrado."
+        )
+    
+    # Load URLs from backup file
+    try:
+        with open(backup_file_path, 'r', encoding='utf-8') as f:
+            urls = json.load(f)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Erro ao ler o arquivo de backup: {str(e)}"
+        )
+    
+    if not urls:
+        return {
+            "message": "Nenhuma URL encontrada no arquivo de backup.",
+            "total_urls": 0,
+            "restored_count": 0
+        }
+    
+    # Import each URL using the scraper importer directly
+    restored_count = 0
+    errors = []
+    
+    importer = ScraperImporter()
+    
+    for url in urls:
+        try:
+            # Import the URL directly using the scraper handler
+            parsed = importer.import_from_url(str(url), force_browser=False)
+            
+            # Persist the parsed note to the database
+            note = _persist_parsed_note(parsed, FiscalSourceType.SCRAPING, db)
+            restored_count += 1
+            
+        except Exception as e:
+            errors.append({
+                "url": url,
+                "error": str(e)
+            })
+    
+    return {
+        "message": f"Processo de restauração concluído. {restored_count} de {len(urls)} URLs restauradas.",
+        "total_urls": len(urls),
+        "restored_count": restored_count,
+        "errors": errors
+    }
+
+
 @app.get("/fiscal-notes", response_model=List[FiscalNoteOut])
 def list_fiscal_notes(
     date_from: Optional[date] = Query(
