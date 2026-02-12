@@ -285,16 +285,22 @@ class DefaultSefazAdapter(BaseSefazAdapter):
                         if name_element:
                             name = name_element.get_text(strip=True)
                         else:
-                            # Se não encontrar com span, tenta extrair o primeiro texto significativo
-                            name_parts = []
-                            for content in first_td.contents:
-                                if hasattr(content, 'name') and content.name == 'span':
-                                    continue
-                                elif hasattr(content, 'strip'):
-                                    text_part = content.strip()
-                                    if text_part and not text_part.isspace():
-                                        name_parts.append(text_part)
-                            name = " ".join(name_parts).split('\n')[0].strip() if name_parts else ""
+                            # Se não encontrar com span txtTit, tenta extrair o primeiro texto significativo
+                            # que não seja parte dos spans com informações adicionais
+                            all_text = first_td.get_text(separator='|', strip=True)
+                            # Divide pelo separador e pega a primeira parte que parece ser o nome do produto
+                            parts = all_text.split('|')
+                            # Filtra partes vazias e busca a que parece ser o nome do produto
+                            for part in parts:
+                                part = part.strip()
+                                # Ignora partes que contêm códigos, quantidades ou preços
+                                if part and not any(keyword in part.lower() for keyword in ['código', 'qtde', 'un:', 'vl. unit', 'r$', 'valor']) and len(part) > 3:
+                                    # Certifique-se de que não é um texto irrelevante como "NITEROI"
+                                    if part.lower() != "niteroi":
+                                        name = part
+                                        break
+                            else:
+                                name = ""
                         
                         # Extrai quantidade e unidade dos spans
                         qty_text = "0"
