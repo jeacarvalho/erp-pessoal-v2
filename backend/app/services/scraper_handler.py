@@ -74,11 +74,26 @@ class DefaultSefazAdapter(BaseSefazAdapter):
         )
 
     def _extract_seller_name(self, soup: BeautifulSoup) -> str:
-        # Heurística simples: primeiro <h1> ou <h2>.
+        # Procura pelo elemento txtTopo com id u20 que contém o nome do vendedor
+        seller_div = soup.find("div", {"class": "txtTopo", "id": "u20"})
+        if seller_div:
+            seller_name = seller_div.get_text(strip=True)
+            
+            # Procura pelo CNPJ que está na div seguinte
+            cnpj_div = seller_div.find_next_sibling("div", class_="text")
+            if cnpj_div:
+                cnpj_text = cnpj_div.get_text(strip=True)
+                if "CNPJ:" in cnpj_text.upper():
+                    return f"{seller_name}; {cnpj_text}"
+            
+            return seller_name
+        
+        # Se não encontrar o formato específico, tenta métodos alternativos
         for tag_name in ("h1", "h2"):
             tag = soup.find(tag_name)
             if tag and tag.get_text(strip=True):
                 return tag.get_text(strip=True)
+        
         return "Estabelecimento Desconhecido"
 
     def _extract_access_key(self, soup: BeautifulSoup) -> str:
