@@ -331,6 +331,9 @@ def list_fiscal_items(
         .limit(limit)
     )
     
+    # Log the SQL statement
+    logger.info(f"[fiscal-items] Executing SQL statement: {stmt}")
+    
     result = db.execute(stmt)
     rows = result.all()
     
