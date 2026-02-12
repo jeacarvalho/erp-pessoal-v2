@@ -354,13 +354,15 @@ def main():
                                 payload = {
                                     "ean": ean_code,
                                     "name_standard": name_standard,
-                                    "owner": owner
+                                    "category_id": None  # Using category_id instead of owner to match backend schema
                                 }
                                 
                                 try:
                                     register_response = httpx.post("http://127.0.0.1:8000/products/eans/", json=payload)
                                     if register_response.status_code == 200:
                                         st.success(f"Produto cadastrado com sucesso! EAN: {ean_code}, Nome: {name_standard}")
+                                    elif register_response.status_code == 404:
+                                        st.error("Erro: Rota de API não encontrada no backend. Verifique o arquivo main.py")
                                     else:
                                         st.error(f"Erro ao cadastrar produto: {register_response.text}")
                                 except Exception as e:

@@ -22,9 +22,19 @@ from .models import (
     ProductMaster,
 )
 from .schemas import CategoryOut, FiscalItemOut, FiscalNoteOut, TransactionCreate, TransactionOut, ProductMappingCreate
+from pydantic import BaseModel
 from .seed import get_session_factory, seed_categories
 from .services.scraper_handler import ScraperImporter
 from .services.xml_handler import ParsedNote, XMLProcessor
+
+
+class ProductEanCreate(BaseModel):
+    """Schema para criação/atualização de produtos por EAN."""
+    
+    ean: int
+    name_standard: str
+    category_id: Optional[int] = None
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -480,6 +490,58 @@ def list_orphan_fiscal_items(
     logger.info(f"[fiscal-items/orphans] Itens órfãos retornados: {len(items)}")
     
     return items
+
+
+@app.post("/products/eans/")
+def create_product_ean(
+    product_data: ProductEanCreate,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Cria ou atualiza um produto na tabela products_master e atualiza itens órfãos."""
+    
+    logger.debug(f"DEBUG: Recebido cadastro para o EAN {product_data.ean} - {product_data.name_standard}")
+    
+    # Faz o upsert (inserir ou atualizar) na tabela products_master
+    product = db.query(ProductMaster).filter(ProductMaster.ean == product_data.ean).first()
+    
+    if product:
+        # Atualiza o produto existente
+        product.name_standard = product_data.name_standard
+        product.category_id = product_data.category_id
+        logger.info(f"[products/eans] Produto atualizado: EAN {product.ean}, Nome: {product.name_standard}")
+    else:
+        # Cria um novo produto
+        product = ProductMaster(
+            ean=product_data.ean,
+            name_standard=product_data.name_standard,
+            category_id=product_data.category_id
+        )
+        db.add(product)
+        logger.info(f"[products/eans] Novo produto criado: EAN {product.ean}, Nome: {product.name_standard}")
+    
+    db.commit()
+    
+    # Agora atualiza todos os itens fiscais que têm a mesma descrição bruta
+    # para usar este EAN, baseado nos mapeamentos existentes
+    mappings = db.query(ProductMapping).filter(ProductMapping.product_ean == product_data.ean).all()
+    
+    for mapping in mappings:
+        # Encontra todos os itens fiscais que correspondem a este mapeamento
+        orphan_items = db.query(FiscalItem).join(
+            FiscalNote, FiscalItem.note_id == FiscalNote.id
+        ).filter(
+            FiscalItem.product_ean.is_(None),
+            FiscalItem.product_name == mapping.raw_description,
+            FiscalNote.seller_name == mapping.seller_name
+        ).all()
+        
+        for item in orphan_items:
+            item.product_ean = product_data.ean
+            logger.info(f"[products/eans] Item vinculado ao EAN {product_data.ean}: {item.product_name}")
+    
+    db.commit()
+    
+    return {"message": "Produto salvo com sucesso", "ean": product_data.ean}
 
 
 @app.post("/product-mappings/")
