@@ -77,6 +77,16 @@ class ProductMappingCreate(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ProductMasterCreate(BaseModel):
+    """Schema de entrada para criação de produtos master."""
+
+    ean: str  # Accept as string to handle large numbers
+    name_standard: str
+    category_id: Optional[int] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 __all__ = [
     "CategoryOut",
     "FiscalItemOut",
@@ -84,5 +94,6 @@ __all__ = [
     "TransactionCreate",
     "TransactionOut",
     "ProductMappingCreate",
+    "ProductMasterCreate",
 ]
 
