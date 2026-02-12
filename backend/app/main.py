@@ -21,7 +21,7 @@ from .models import (
     ProductMapping,
     ProductMaster,
 )
-from .schemas import CategoryOut, FiscalItemOut, FiscalNoteOut, TransactionCreate, TransactionOut, ProductMappingCreate
+from .schemas import CategoryOut, FiscalItemOut, FiscalNoteOut, TransactionCreate, TransactionOut, ProductMappingCreate, ProductMasterCreate
 from .seed import get_session_factory, seed_categories
 from .services.scraper_handler import ScraperImporter
 from .services.xml_handler import ParsedNote, XMLProcessor
@@ -480,6 +480,47 @@ def list_orphan_fiscal_items(
     logger.info(f"[fiscal-items/orphans] Itens órfãos retornados: {len(items)}")
     
     return items
+
+
+@app.post("/products/eans/")
+def create_product_master(
+    product: ProductMasterCreate,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Cria ou atualiza um produto master com base no EAN."""
+    
+    logger.info(f"[products/eans] Criando/atualizando produto master: EAN {product.ean}")
+    
+    # Validate that EAN has at least 13 digits
+    if len(product.ean) < 13 or not product.ean.isdigit():
+        raise HTTPException(status_code=400, detail="EAN deve ter pelo menos 13 dígitos numéricos")
+    
+    # Convert EAN to integer for storage
+    ean_int = int(product.ean)
+    
+    # Check if product already exists
+    existing_product = db.query(ProductMaster).filter(ProductMaster.ean == ean_int).first()
+    
+    if existing_product:
+        # Update existing product
+        existing_product.name_standard = product.name_standard
+        existing_product.category_id = product.category_id
+        db.commit()
+        db.refresh(existing_product)
+        logger.info(f"[products/eans] Produto atualizado: ID {existing_product.id}")
+        return {"message": "Produto atualizado com sucesso", "id": existing_product.id, "ean": existing_product.ean}
+    else:
+        # Create new product
+        new_product = ProductMaster(
+            ean=ean_int,
+            name_standard=product.name_standard,
+            category_id=product.category_id
+        )
+        db.add(new_product)
+        db.commit()
+        db.refresh(new_product)
+        logger.info(f"[products/eans] Novo produto criado: ID {new_product.id}")
+        return {"message": "Produto criado com sucesso", "id": new_product.id, "ean": new_product.ean}
 
 
 @app.post("/product-mappings/")

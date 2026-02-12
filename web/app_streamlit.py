@@ -343,9 +343,14 @@ def main():
                         with st.form(key="register_product"):
                             name_standard = st.text_input("Nome Amigável do Produto")
                             
-                            # Get family member options
-                            family_members = ["Ana", "Carol", "Isabela", "Eduardo"]
-                            owner = st.selectbox("Responsável pelo produto", family_members)
+                            # Get family member options and map to category IDs
+                            family_member_to_category = {
+                                "Ana": 21,      # Ana category ID
+                                "Carol": 20,    # Carol category ID
+                                "Eduardo": 22,  # Eduardo category ID
+                                "Isabela": 12   # Isabela category ID (Ajuda Bruna Isabela)
+                            }
+                            owner = st.selectbox("Responsável pelo produto", list(family_member_to_category.keys()))
                             
                             submit_button = st.form_submit_button("Cadastrar Produto")
                             
@@ -354,13 +359,46 @@ def main():
                                 payload = {
                                     "ean": ean_code,
                                     "name_standard": name_standard,
-                                    "owner": owner
+                                    "category_id": family_member_to_category[owner]
                                 }
                                 
                                 try:
                                     register_response = httpx.post("http://127.0.0.1:8000/products/eans/", json=payload)
                                     if register_response.status_code == 200:
                                         st.success(f"Produto cadastrado com sucesso! EAN: {ean_code}, Nome: {name_standard}")
+                                        
+                                        # After successful product registration, create a mapping for the raw description
+                                        # Get the raw description from the orphan items if any
+                                        try:
+                                            fiscal_response = httpx.get("http://127.0.0.1:8000/fiscal-items/orphans")
+                                            if fiscal_response.status_code == 200:
+                                                orphan_items = fiscal_response.json()
+                                                
+                                                if orphan_items:
+                                                    # Find an orphan item matching the scanned product name
+                                                    for item in orphan_items:
+                                                        # Create mapping for this raw description to the newly registered EAN
+                                                        mapping_payload = {
+                                                            "raw_description": item['product_name'],
+                                                            "seller_name": item.get('seller_name', 'Desconhecido'),
+                                                            "product_ean": int(ean_code)
+                                                        }
+                                                        
+                                                        mapping_response = httpx.post(
+                                                            "http://127.0.0.1:8000/product-mappings/", 
+                                                            json=mapping_payload
+                                                        )
+                                                        if mapping_response.status_code == 200:
+                                                            st.success(
+                                                                f"Sistema aprendeu a traduzir '{item['product_name']}' para o EAN {ean_code}! "
+                                                                f"Este vínculo será usado nas próximas importações."
+                                                            )
+                                                            break  # Only create one mapping for the new EAN
+                                                        else:
+                                                            st.error(f"Erro ao criar vínculo: {mapping_response.text}")
+                                                            break
+                                        except Exception as e:
+                                            st.error(f"Erro ao tentar criar vínculo automático: {str(e)}")
                                     else:
                                         st.error(f"Erro ao cadastrar produto: {register_response.text}")
                                 except Exception as e:
