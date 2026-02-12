@@ -18,6 +18,8 @@ from .models import (
     FiscalItem,
     FiscalNote,
     FiscalSourceType,
+    ProductMapping,
+    ProductMaster,
 )
 from .schemas import CategoryOut, FiscalItemOut, FiscalNoteOut, TransactionCreate, TransactionOut
 from .seed import get_session_factory, seed_categories
@@ -195,6 +197,21 @@ def _persist_parsed_note(
     db.flush()
 
     for item in parsed.items:
+        # Verifica se já existe um mapeamento para este produto
+        product_mapping = db.execute(
+            select(ProductMapping).where(
+                (ProductMapping.raw_description == item.name) &
+                (ProductMapping.seller_name == parsed.seller_name)
+            )
+        ).scalar_one_or_none()
+        
+        product_ean = None
+        if product_mapping:
+            product_ean = product_mapping.product_ean
+            logger.info(f"Vínculo automático encontrado para '{item.name}' no vendedor '{parsed.seller_name}': EAN {product_ean}")
+        else:
+            logger.info(f"Item sem EAN, aguardando mapeamento manual: '{item.name}' no vendedor '{parsed.seller_name}'")
+
         fiscal_item = FiscalItem(
             note_id=note.id,
             product_name=item.name,
@@ -202,6 +219,7 @@ def _persist_parsed_note(
             unit_price=item.unit_price,
             total_price=item.total_price,
             category_id=None,
+            product_ean=product_ean,
         )
         db.add(fiscal_item)
 

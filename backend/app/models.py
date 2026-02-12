@@ -5,6 +5,7 @@ from enum import Enum
 from typing import List, Optional
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     Date,
@@ -115,6 +116,48 @@ class FiscalNote(Base):
     )
 
 
+class ProductMaster(Base):
+    """Cadastro único de produtos por EAN.
+
+    Attributes:
+        ean: Código EAN do produto (chave primária).
+        name_standard: Nome amigável padronizado do produto.
+        category_id: Chave estrangeira para `Category`.
+    """
+
+    __tablename__ = "products_master"
+
+    ean: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    name_standard: Mapped[str] = mapped_column(String(255), nullable=False)
+    category_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("categories.id"), nullable=True
+    )
+
+    category: Mapped[Optional[Category]] = relationship("Category")
+
+
+class ProductMapping(Base):
+    """Mapeamento entre descrições brutas e produtos identificados.
+
+    Attributes:
+        id: Identificador único do mapeamento.
+        raw_description: Descrição original do produto na nota fiscal.
+        seller_name: Nome do vendedor/mercado.
+        product_ean: Chave estrangeira para o produto master.
+    """
+
+    __tablename__ = "product_mapping"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    raw_description: Mapped[str] = mapped_column(String(255), nullable=False)
+    seller_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    product_ean: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("products_master.ean"), nullable=False
+    )
+
+    product: Mapped[ProductMaster] = relationship("ProductMaster")
+
+
 class FiscalItem(Base):
     """Item pertencente a uma nota fiscal.
 
@@ -126,6 +169,7 @@ class FiscalItem(Base):
         unit_price: Preço unitário.
         total_price: Preço total do item.
         category_id: Chave estrangeira para `Category`.
+        product_ean: Chave estrangeira opcional para products_master (para vínculos futuros).
         note: Relação ORM com `FiscalNote`.
         category: Relação ORM com `Category`.
     """
@@ -143,9 +187,13 @@ class FiscalItem(Base):
     category_id: Mapped[Optional[int]] = mapped_column(
         Integer, ForeignKey("categories.id"), nullable=True
     )
+    product_ean: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("products_master.ean"), nullable=True
+    )
 
     note: Mapped[FiscalNote] = relationship("FiscalNote", back_populates="items")
     category: Mapped[Optional[Category]] = relationship("Category")
+    product: Mapped[Optional[ProductMaster]] = relationship("ProductMaster")
 
     __table_args__ = (
         CheckConstraint("quantity > 0", name="ck_fiscal_items_quantity_positive"),
