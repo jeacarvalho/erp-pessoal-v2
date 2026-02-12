@@ -1,34 +1,24 @@
-```gitignore
-# Python compiled files
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# Test coverage and cache
-.pytest_cache/
-.coverage
-coverage/
-htmlcov/
-
-# Dependencies
-venv/
-.venv/
+```
+# Environment files
 .env
 .env.local
 *.env.*
 
-# Logs
+# Logs and temporary files
 *.log
-
-# IDE and editor files
-.vscode/
-.idea/
-*.swp
-*.swo
 *.tmp
+*.swp
 
-# OS files
+# Backup files
+*~
+*.bak
+*.backup
+
+# OS specific files
 .DS_Store
 Thumbs.db
+
+# Editors/IDE
+.vscode/
+.idea/
 ```
