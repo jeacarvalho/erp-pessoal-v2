@@ -123,16 +123,57 @@ def main():
         # Text input for NFC-e URL
         url = st.text_input("Insira a URL da NFC-e:")
         
+        # Checkbox to use browser for scraping (optional)
+        use_browser = st.checkbox("Usar navegador para scraping (mais lento mas mais confiável)")
+        
         # File uploader for XML
         xml_file = st.file_uploader("Ou faça upload do arquivo XML:", type=["xml"])
         
-        if url:
-            st.write(f"URL fornecida: {url}")
-            # Here you would implement the logic to handle the URL
+        # Import button
+        import_button = st.button("Importar")
         
-        if xml_file:
-            st.write(f"Arquivo XML selecionado: {xml_file.name}")
-            # Here you would implement the logic to handle the XML file
+        if import_button:
+            if url:
+                with st.spinner("Importando dados da URL..."):
+                    try:
+                        # Call backend API for URL import
+                        import_payload = {"url": url, "use_browser": use_browser}
+                        response = httpx.post("http://127.0.0.1:8000/import/url", json=import_payload)
+                        
+                        if response.status_code == 200:
+                            result = response.json()
+                            st.success(f"Nota fiscal importada com sucesso!")
+                            st.write(f"ID da Nota: {result['note_id']}")
+                            st.write(f"Quantidade de Itens: {result['items_count']}")
+                            st.write(f"Estabelecimento: {result['seller_name']}")
+                            st.write(f"Valor Total: R$ {result['total_amount']:.2f}")
+                        else:
+                            st.error(f"Erro na importação: {response.status_code} - {response.text}")
+                    except Exception as e:
+                        st.error(f"Erro ao conectar ao backend: {str(e)}")
+            
+            elif xml_file:
+                with st.spinner("Importando dados do XML..."):
+                    try:
+                        # Prepare file for upload
+                        files = {"file": (xml_file.name, xml_file.getvalue(), "application/xml")}
+                        
+                        # Call backend API for XML import
+                        response = httpx.post("http://127.0.0.1:8000/import/xml", files=files)
+                        
+                        if response.status_code == 200:
+                            result = response.json()
+                            st.success(f"Nota fiscal importada com sucesso!")
+                            st.write(f"ID da Nota: {result['note_id']}")
+                            st.write(f"Quantidade de Itens: {result['items_count']}")
+                            st.write(f"Estabelecimento: {result['seller_name']}")
+                            st.write(f"Valor Total: R$ {result['total_amount']:.2f}")
+                        else:
+                            st.error(f"Erro na importação: {response.status_code} - {response.text}")
+                    except Exception as e:
+                        st.error(f"Erro ao conectar ao backend: {str(e)}")
+            else:
+                st.warning("Por favor, insira uma URL ou faça upload de um arquivo XML.")
 
     elif page == "Histórico de Preços (Inflação)":
         st.header("Histórico de Preços (Inflação)")
