@@ -324,6 +324,11 @@ def list_fiscal_items(
 ) -> List[dict]:
     """Lista os itens fiscais mais recentes das notas importadas."""
     
+    # Log para mostrar o caminho real do banco de dados
+    logger.info(f"[fiscal-items] Caminho real do banco de dados: {DATABASE_URL}")
+    if SQLITE_DB_PATH:
+        logger.info(f"[fiscal-items] Caminho físico do banco de dados: {os.path.abspath(SQLITE_DB_PATH)}")
+    
     stmt = (
         select(FiscalItem, FiscalNote)
         .join(FiscalNote, FiscalItem.note_id == FiscalNote.id)
