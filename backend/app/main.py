@@ -348,6 +348,8 @@ def list_fiscal_items(
             "seller_name": fiscal_note.seller_name,
         })
     
+    logger.info(f"[fiscal-items] Quantidade de itens retornados: {len(items)}")
+    
     return items
 
 
