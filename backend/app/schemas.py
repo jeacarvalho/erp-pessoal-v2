@@ -67,11 +67,22 @@ class TransactionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class ProductMappingCreate(BaseModel):
+    """Schema de entrada para criação de mapeamentos de produtos."""
+
+    raw_description: str
+    seller_name: str
+    product_ean: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 __all__ = [
     "CategoryOut",
     "FiscalItemOut",
     "FiscalNoteOut",
     "TransactionCreate",
     "TransactionOut",
+    "ProductMappingCreate",
 ]
 
