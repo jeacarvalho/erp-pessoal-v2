@@ -328,13 +328,10 @@ def list_fiscal_items(
         select(FiscalItem, FiscalNote)
         .join(FiscalNote, FiscalItem.note_id == FiscalNote.id)
         .order_by(FiscalNote.date.desc(), FiscalItem.id.desc())
-        .limit(limit)
     )
     
-    # Log the SQL statement
-    logger.info(f"[fiscal-items] Executing SQL statement: {stmt}")
-    
-    result = db.execute(stmt)
+    # Aplica o limite explicitamente para garantir que o parâmetro seja corretamente bindado
+    result = db.execute(stmt.limit(limit))
     rows = result.all()
     
     items = []
