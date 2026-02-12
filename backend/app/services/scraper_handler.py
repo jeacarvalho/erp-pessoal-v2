@@ -12,6 +12,10 @@ from bs4 import BeautifulSoup
 
 from .xml_handler import ParsedItem, ParsedNote
 from .browser_fetcher import BrowserHTMLFetcher
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 def _looks_like_sefaz_block_page(html: str) -> bool:
@@ -78,6 +82,7 @@ class DefaultSefazAdapter(BaseSefazAdapter):
         seller_div = soup.find("div", {"class": "txtTopo", "id": "u20"})
         if seller_div:
             seller_name = seller_div.get_text(strip=True)
+            logger.info(f"[fiscal-items] seller_name lido: {seller_name}")
             
             # Procura pelo CNPJ que está na div seguinte
             cnpj_div = seller_div.find_next_sibling("div", class_="text")
