@@ -193,7 +193,40 @@ class DefaultSefazAdapter(BaseSefazAdapter):
         # Procura por padrões de data e hora no HTML, como no exemplo:
         # "Emissão: 11/02/2026 07:35:22-03:00"
         import re
+        
+        # Primeiro tenta encontrar a data de emissão específica na seção "Informações gerais da Nota"
+        # Procurando por padrões específicos de emissão perto de texto relevante
         text = soup.get_text(" ", strip=True)
+        
+        # Procura pela expressão específica "Emissão:" após termos como "Número:", "Série:", etc.
+        # que indica a data de emissão da nota fiscal
+        emission_pattern = r'(?:Número:\s*\d+.*?Série:\s*\d+|Série:\s*\d+.*?Número:\s*\d+)?(?:\s*Emiss[aã]o\s*:\s*|\s*EMISS[AÃ]O\s+NORMAL[^<]*?<br[^>]*>.*?Emiss[aã]o\s*:\s*)(\d{2}/\d{2}/\d{4})'
+        emission_matches = re.findall(emission_pattern, text, re.IGNORECASE | re.DOTALL)
+        if emission_matches:
+            for match in emission_matches:
+                try:
+                    day, month, year = map(int, match.split('/'))
+                    return date(year, month, day)
+                except ValueError:
+                    continue
+        
+        # Procura por padrões mais específicos na estrutura HTML conhecida
+        # Busca dentro de listas ou elementos que contenham informações da nota
+        emission_elements = soup.find_all(string=re.compile(r'Emiss[aã]o:', re.IGNORECASE))
+        for element in emission_elements:
+            # Procura pela data após "Emissão:"
+            parent = element.parent if element.parent else None
+            if parent:
+                # Obtém o texto do pai e procura por padrões de data
+                parent_text = parent.get_text(" ", strip=True)
+                date_match = re.search(r'Emiss[aã]o\s*:\s*(\d{2}/\d{2}/\d{4})', parent_text, re.IGNORECASE)
+                if date_match:
+                    date_str = date_match.group(1)
+                    try:
+                        day, month, year = map(int, date_str.split('/'))
+                        return date(year, month, day)
+                    except ValueError:
+                        continue
         
         # Procura pelo padrão "Emissão: DD/MM/YYYY HH:MM:SS[timezone_offset]"
         # ou variações como "EMISSÃO: DD/MM/YYYY HH:MM:SS" etc.
