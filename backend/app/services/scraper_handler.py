@@ -284,6 +284,12 @@ class DefaultSefazAdapter(BaseSefazAdapter):
                         name_element = first_td.find("span", class_="txtTit")
                         if name_element:
                             name = name_element.get_text(strip=True)
+                            
+                            # Log if the name is "NITEROI" to help debug the issue
+                            if name.lower() == "niteroi":
+                                logger.warning(f"[fiscal-items] Item encontrado com nome 'NITEROI'. Conteúdo completo do first_td: {first_td}")
+                                logger.warning(f"[fiscal-items] Texto do elemento txtTit: {name}")
+                                
                         else:
                             # Se não encontrar com span txtTit, tenta extrair o primeiro texto significativo
                             # que não seja parte dos spans com informações adicionais
@@ -301,6 +307,32 @@ class DefaultSefazAdapter(BaseSefazAdapter):
                                         break
                             else:
                                 name = ""
+                                
+                        # Se ainda assim o nome for "NITEROI", tenta obter de forma mais específica
+                        if name.lower() == "niteroi" or not name:
+                            # Tenta encontrar o nome do produto olhando apenas para os textos dentro do td
+                            # excluindo explicitamente spans com outras informações
+                            direct_children_texts = []
+                            for child in first_td.children:
+                                if hasattr(child, 'name') and child.name not in ['span']:
+                                    # Child is a NavigableString, get its text
+                                    if child is not None:
+                                        # Get the text content of the child and strip it
+                                        child_text = str(child).strip()
+                                        if child_text:
+                                            direct_children_texts.append(child_text)
+                                elif hasattr(child, 'name') and child.name == 'span':
+                                    # Verifica se é um span com nome do produto (txtTit) ou outro tipo
+                                    if 'txtTit' in child.get('class', []) and child.get_text(strip=True).lower() != 'niteroi':
+                                        name = child.get_text(strip=True)
+                                        break
+                                    
+                            if not name and direct_children_texts:
+                                # Usa o primeiro texto direto que não seja "NITEROI"
+                                for text in direct_children_texts:
+                                    if text.lower() != 'niteroi':
+                                        name = text
+                                        break
                         
                         # Extrai quantidade e unidade dos spans
                         qty_text = "0"

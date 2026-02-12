@@ -1,224 +1,240 @@
 #!/usr/bin/env python3
 """
-Script temporário para corrigir o método _extract_items no scraper_handler.py
+Test script to verify the fix for the RJSefazNFCeAdapter item extraction issue.
 """
 
-import re
+import sys
+import os
+sys.path.insert(0, '/workspace/backend')
 
-def fix_scraper_handler():
-    # Lê o conteúdo do arquivo
-    with open('/workspace/backend/app/services/scraper_handler.py', 'r') as f:
-        content = f.read()
+from backend.app.services.scraper_handler import DefaultSefazAdapter
+from bs4 import BeautifulSoup
 
-    # Define o novo método _extract_items
-    new_method = '''    def _extract_items(self, soup: BeautifulSoup) -> List[ParsedItem]:
-        items: List[ParsedItem] = []
+# HTML content provided in the issue
+html_content = '''<?xml version="1.0" encoding="ISO-8859-1"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="pt-br" lang="pt-br"><head id="j_idt2">
+<script type="text/javascript">
+(function(){
+window["loaderConfig"] = "/TSPD/?type=21";
+})();
 
-        # Procura especificamente pela tabela de resultados que contém os itens
-        # conforme o HTML fornecido no exemplo
-        table = soup.find('table', {'id': 'tabResult'})
-        
-        if table:
-            # Processa cada linha da tabela como um item
-            rows = table.find_all('tr')
-            for row in rows:
-                # Verifica se é uma linha de item (tem ID começando com "Item + ")
-                row_id = row.get('id', '')
-                if row_id.startswith('Item + '):
-                    # Extrai informações do item
-                    # O nome do produto está em um span com classe txtTit
-                    product_span = row.find('span', class_='txtTit')
-                    if product_span:
-                        # Extrai o nome do produto, removendo possíveis códigos
-                        product_text = product_span.get_text(strip=True)
-                        # Remove o código do produto se presente (entre parênteses)
-                        if '(Código:' in product_text:
-                            product_name = product_text.split('(Código:')[0].strip()
-                        else:
-                            product_name = product_text
-                        
-                        # Extrai quantidade, unidade e valores
-                        qtd_span = row.find('span', class_='Rqtd')
-                        un_span = row.find('span', class_='RUN')
-                        unit_price_span = row.find('span', class_='RvlUnit')
-                        total_price_span = row.find('td', class_='txtTit noWrap')
-                        
-                        quantity = 0.0
-                        unit = "UN"
-                        unit_price = 0.0
-                        total_price = 0.0
-                        
-                        # Extrai quantidade
-                        if qtd_span:
-                            qtd_text = qtd_span.get_text(strip=True)
-                            # Extrai o número após "Qtde.:"
-                            import re
-                            qtd_match = re.search(r'Qtde\.:(.+)', qtd_text)
-                            if qtd_match:
-                                try:
-                                    qty_str = qtd_match.group(1).strip().replace(".", "").replace(",", ".")
-                                    quantity = float(qty_str)
-                                except:
-                                    quantity = 0.0
-                        
-                        # Extrai unidade
-                        if un_span:
-                            un_text = un_span.get_text(strip=True)
-                            # Extrai o texto após "UN: "
-                            un_match = re.search(r'UN:\s*(.+)', un_text)
-                            if un_match:
-                                unit = un_match.group(1).strip()
-                        
-                        # Extrai preço unitário
-                        if unit_price_span:
-                            unit_price_text = unit_price_span.get_text(strip=True)
-                            # Extrai o número após "Vl. Unit.:"
-                            price_match = re.search(r'Vl\. Unit\.:\\s*([0-9,.]+)', unit_price_text)
-                            if price_match:
-                                try:
-                                    price_str = price_match.group(1).strip().replace(".", "").replace(",", ".")
-                                    unit_price = float(price_str)
-                                except:
-                                    unit_price = 0.0
-                        
-                        # Extrai preço total
-                        if total_price_span:
-                            # O valor total está em um span com classe 'valor'
-                            valor_span = total_price_span.find('span', class_='valor')
-                            if valor_span:
-                                try:
-                                    total_str = valor_span.get_text(strip=True).replace(".", "").replace(",", ".")
-                                    total_price = float(total_str)
-                                except:
-                                    total_price = 0.0
-                        
-                        # Só adiciona o item se tiver nome válido
-                        if product_name and product_name.strip():
-                            items.append(
-                                ParsedItem(
-                                    name=product_name,
-                                    quantity=quantity,
-                                    unit=unit,
-                                    unit_price=unit_price,
-                                    total_price=total_price,
-                                )
-                            )
-        else:
-            # Se não encontrar a tabela específica, tenta o método antigo baseado em texto
-            # como fallback (mas isso pode causar o problema mencionado)
-            full_text = soup.get_text("\\n", strip=True)
-            lines = [ln.strip() for ln in full_text.splitlines() if ln.strip()]
+</script>
 
-            def _to_float(value: str) -> float:
-                return float(value.replace(".", "").replace(",", "."))
+<script type="text/javascript" src="/TSPD/?type=18"></script>
 
-            i = 0
-            while i < len(lines):
-                line = lines[i]
-                
-                # Procura por linhas que contêm "Qtde.:"
-                if re.match(r"Qtde\.?:", line, re.IGNORECASE):
-                    
-                    # Tenta extrair os dados das próximas linhas
-                    try:
-                        # Linha atual pode ter "Qtde.:" ou só o valor na próxima
-                        if ":" in line and len(line) > 6:
-                            # Formato: "Qtde.: 1" ou "Qtde.:1"
-                            qty_text = line.split(":", 1)[1].strip()
-                            next_line_offset = 1
-                        else:
-                            # Formato: linha com "Qtde.:" e valor na próxima linha
-                            qty_text = lines[i + 1] if i + 1 < len(lines) else "0"
-                            next_line_offset = 2
-                        
-                        # Busca UN:, Vl. Unit.:, Vl. Total nas próximas linhas
-                        unit = ""
-                        unit_price = 0.0
-                        total_price = 0.0
-                        name = ""
-                        
-                        # Nome do produto: algumas linhas antes (ignora códigos e linhas especiais)
-                        for j in range(max(0, i - 8), i):
-                            candidate = lines[j]
-                            # Ignora linhas com "Código:", "Clear text", números puros, etc.
-                            if candidate and len(candidate) > 3:
-                                # Pula linhas que são apenas números (códigos)
-                                if candidate.isdigit():
-                                    continue
-                                # Pula linhas especiais
-                                if any(x in candidate for x in ["Código", "Clear text", "(Código"]):
-                                    continue
-                                # Pula linhas com palavras-chave de campos
-                                if any(x in candidate.lower() for x in ["qtde", "vl.", "un:", "cnpj", "documento auxiliar", ")"]):
-                                    continue
-                                # Aceita apenas se tem letras (não só números e símbolos)
-                                if any(c.isalpha() for c in candidate):
-                                    name = candidate
-                                    break
-                        
-                        # Procura os outros campos nas próximas 10 linhas
-                        for j in range(i + next_line_offset, min(i + 15, len(lines))):
-                            current = lines[j]
-                            
-                            if re.match(r"UN:", current, re.IGNORECASE):
-                                # Próxima linha tem a unidade
-                                if j + 1 < len(lines):
-                                    unit = lines[j + 1]
-                            
-                            elif re.match(r"Vl\.?\\s*Unit\.?:", current, re.IGNORECASE):
-                                # Próxima linha tem o preço unitário
-                                if j + 1 < len(lines):
-                                    try:
-                                        unit_price = _to_float(lines[j + 1])
-                                    except:
-                                        pass
-                            
-                            elif re.match(r"Vl\.?\\s*Total", current, re.IGNORECASE):
-                                # Próxima linha tem o total
-                                if j + 1 < len(lines):
-                                    try:
-                                        total_price = _to_float(lines[j + 1])
-                                    except:
-                                        pass
-                                break  # Fim dos dados deste item
-                        
-                        # Converte quantidade
-                        try:
-                            qty = _to_float(qty_text)
-                        except:
-                            qty = 0.0
-                        
-                        if name and qty > 0:
-                            items.append(
-                                ParsedItem(
-                                    name=name,
-                                    quantity=qty,
-                                    unit=unit or "UN",
-                                    unit_price=unit_price,
-                                    total_price=total_price,
-                                )
-                            )
-                    except Exception:
-                        pass
-                
-                i += 1
+<meta http-equiv="X-UA-Compatible" content="IE=9, IE=edge" /> 
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="format-detection" content="telephone=no" />
+<meta name="robots" content="noindex" />
+<meta name="googlebot" content="noindex" />
+<title>Consulta QRCode NFC-e</title>
+	<script type="text/javascript" src="https://code.jquery.com/jquery-1.9.1.js  "></script><script type="text/javascript" src="/consultaNFCe/javax.faces.resource/index.js.faces?ln=js"></script><script type="text/javascript" src="/consultaNFCe/javax.faces.resource/jquery.mobile-1.4.5.min.js.faces?ln=js"></script>
+	<script async="true" src="https://www.googletagmanager.com/gtag/js?id=G-7JK4931RGY"></script><link type="text/css" rel="stylesheet" href="/consultaNFCe/javax.faces.resource/jquery.mobile-1.4.5.min.css.faces?ln=css" /><link type="text/css" rel="stylesheet" href="/consultaNFCe/javax.faces.resource/nfceMob.css.faces?ln=css" /><link type="text/css" rel="stylesheet" href="/consultaNFCe/javax.faces.resource/nfceMob_ie.css.faces?ln=css" /></head><body><div xmlns:r="http://www.serpro.gov.br/nfe/remessanfe.xsd" xmlns:chave="http://exslt.org/chaveacesso" xmlns:n="http://www.portalfiscal.inf.br/nfe" data-role="header">
+<h1 class="tit">
+<img alt="NFC-e" height="64" width="112" src="../resources/images/logoNFCe.png"><p>DOCUMENTO AUXILIAR DA NOTA FISCAL DE CONSUMIDOR ELETR&Ocirc;NICA</p>
+<p></p>
+</h1>
+</div><div data-role="content">
+<div id="conteudo">
+<div id="avisos"></div>
+<div class="txtCenter">
+<div class="txtTopo" id="u20">PRECO DE POPULAR ITAIPU LTDA</div>
+<div class="text">
+								CNPJ:
+								27.207.407/0001-40</div>
+<div class="text">ESTRADA FRANCISCO DA CRUZ NUNES
+							,
+							2376
+							,
+							LOJA 101
+							,
+							ITAIPU
+							,
+							NITEROI
+							,
+							RJ</div>
+</div>
+<table data-filter="true" id="tabResult" cellspacing="0" cellpadding="0" align="center" border="0">
+<tr id="Item + 1">
+<td valign="top"><span class="txtTit">IMEDIA SEM AMONIA 6U LOURO ESCURO UNIVERSAL</span><span class="RCod">
+										(C&oacute;digo:
+										0393691
+										)
+									</span>
+<br>
+<span class="Rqtd"><strong>Qtde.:</strong>1</span><span class="RUN"><strong>UN: </strong>UN</span><span class="RvlUnit"><strong>Vl. Unit.:</strong>
+										&nbsp;
+										34,79</span></td><td class="txtTit noWrap" valign="top" align="right">
+									Vl. Total
+									<br>
+<span class="valor">34,79</span></td>
+</tr>
+<tr id="Item + 2">
+<td valign="top"><span class="txtTit">TELE-ENTREGA</span><span class="RCod">
+										(C&oacute;digo:
+										0438646
+										)
+									</span>
+<br>
+<span class="Rqtd"><strong>Qtde.:</strong>1</span><span class="RUN"><strong>UN: </strong>UN</span><span class="RvlUnit"><strong>Vl. Unit.:</strong>
+										&nbsp;
+										4,99</span></td><td class="txtTit noWrap" valign="top" align="right">
+									Vl. Total
+									<br>
+<span class="valor">4,99</span></td>
+</tr>
+</table>
+<div class="txtRight" id="totalNota">
+<div id="linhaTotal">
+<label>Qtd. total de itens:</label><span class="totalNumb">2</span>
+</div>
+<div id="linhaTotal">
+<label>Valor total R$:</label><span class="totalNumb">39,78</span>
+</div>
+<div id="linhaTotal">
+<label>Descontos R$:</label><span class="totalNumb">5,22</span>
+</div>
+<div class="linhaShade" id="linhaTotal">
+<label>Valor a pagar R$:</label><span class="totalNumb txtMax">34,56</span>
+</div>
+<div id="linhaForma">
+<label>Forma de pagamento:</label><span class="totalNumb txtTitR">Valor pago R$:</span>
+</div>
+<div id="linhaTotal">
+<label class="tx">
+											Cart&atilde;o de Cr&eacute;dito
+										</label><span class="totalNumb">34,56</span>
+</div>
+<div id="linhaTotal">
+<label class="tx">Troco </label><span class="totalNumb">0,00</span>
+</div>
+</div>
+</div>
+<div class="txtCenter" id="infos">
+<div data-collapsed="false" data-expanded-icon="carat-u" data-collapsed-icon="carat-d" data-role="collapsible">
+<h4>Informa&ccedil;&otilde;es gerais da Nota</h4>
+<ul data-inset="false" data-role="listview">
+<li>
+<strong>EMISS&Atilde;O NORMAL</strong>
+<br>
+<br>
+<strong>N&uacute;mero: </strong>297945<strong> S&eacute;rie: </strong>1<strong> Emiss&atilde;o: </strong>12/02/2026 17:21:02-03:00
+								- Via Consumidor 2
+								<br>
+<br>
+<strong>Protocolo de Autoriza&ccedil;&atilde;o: </strong>233260361876136       12/02/2026 
+        &agrave;s
+      17:22:58-03:00<br>
+<br>
+<strong>
+										Ambiente de Produ&ccedil;&atilde;o -
+									
+									Vers&atilde;o XML:
+									4.00
+									- Vers&atilde;o XSLT: 2.07
+								</strong>
+</li>
+</ul>
+</div>
+<div data-collapsed="false" data-expanded-icon="carat-u" data-collapsed-icon="carat-d" data-role="collapsible">
+<h4>Chave de acesso</h4>
+<ul data-inset="false" data-role="listview">
+<li>
+								Consulte pela Chave de Acesso em
+								
+								www.fazenda.rj.gov.br/nfce/consulta<br>
+<br>
+<strong>Chave de acesso:</strong>
+<br>
+<span class="chave">3326 0227 2074 0700 0140 6500 1000 2979 4511 0297 9451</span>
+</li>
+</ul>
+</div>
+<div data-collapsed="false" data-expanded-icon="carat-u" data-collapsed-icon="carat-d" data-role="collapsible">
+<h4>Consumidor</h4>
+<ul data-inset="false" data-role="listview">
+<li>
+<strong>CPF: </strong>974.115.907-20</li>
+<li>
+<strong>Nome: </strong>ANA CARVALHO</li>
+<li>
+<strong>Logradouro: </strong>RUA JORNALISTA PAULO FRANCIS CASA 33
+									,
+									33
+									,
+									
+									,
+									CAMBOINHAS
+									,
+									NITEROI
+									,
+									RJ</li>
+</ul>
+</div>
+</div>
+</div>
+			
+		<!-- versao:  -->
+		<!--  --></body>
+	<script type="text/javascript">		
+		$(function(){				
+			$('#linkMsg').click(function(event) {  //on click 
+				$('#mensagem').toggle();
+	    	});
+		});
 
-        if not items:
-            raise ValueError("Não foi possível localizar itens da NFC-e do RJ no HTML.")
+		window.dataLayer = window.dataLayer || [];
+	  	function gtag(){dataLayer.push(arguments);}
+	  	gtag('js', new Date());
+	
+	  	gtag('config', 'G-7JK4931RGY');
+		
+	</script>
+</html>'''
 
-        return items'''
-
-    # Localiza a parte do código que precisa ser substituída
-    pattern = r'(\s+)def _extract_items\(self, soup: BeautifulSoup\) -> List\[ParsedItem\]:.*?\n(\s+)(?=def |class |\Z)'
+def test_item_extraction():
+    """Test that the first item is correctly extracted as 'IMEDIA SEM AMONIA 6U LOURO ESCURO UNIVERSAL' and not 'NITEROI'."""
+    adapter = DefaultSefazAdapter()
+    soup = BeautifulSoup(html_content, "html.parser")
     
-    # Substitui o método existente
-    updated_content = re.sub(pattern, r'\1' + new_method + r'\n\n\2', content, 1, re.DOTALL)
-
-    # Escreve o conteúdo atualizado de volta ao arquivo
-    with open('/workspace/backend/app/services/scraper_handler.py', 'w') as f:
-        f.write(updated_content)
-
-    print("Método _extract_items atualizado com sucesso!")
+    # Extract items using the fixed method
+    items = adapter._extract_items(soup)
+    
+    print(f"Number of items extracted: {len(items)}")
+    
+    for i, item in enumerate(items):
+        print(f"Item {i+1}:")
+        print(f"  Name: '{item.name}'")
+        print(f"  Quantity: {item.quantity}")
+        print(f"  Unit: {item.unit}")
+        print(f"  Unit Price: {item.unit_price}")
+        print(f"  Total Price: {item.total_price}")
+        print()
+    
+    # Verify the first item has the correct name
+    if len(items) > 0:
+        first_item_name = items[0].name
+        print(f"First item name: '{first_item_name}'")
+        
+        if first_item_name == "IMEDIA SEM AMONIA 6U LOURO ESCURO UNIVERSAL":
+            print("SUCCESS: First item correctly extracted as 'IMEDIA SEM AMONIA 6U LOURO ESCURO UNIVERSAL'")
+            return True
+        elif first_item_name.lower() == "niteroi":
+            print("FAILURE: First item incorrectly extracted as 'NITEROI'")
+            return False
+        else:
+            print(f"WARNING: First item extracted as '{first_item_name}', expected 'IMEDIA SEM AMONIA 6U LOURO ESCURO UNIVERSAL'")
+            return False
+    else:
+        print("FAILURE: No items were extracted")
+        return False
 
 if __name__ == "__main__":
-    fix_scraper_handler()
+    success = test_item_extraction()
+    if success:
+        print("\nThe fix is working correctly!")
+    else:
+        print("\nThe fix did not resolve the issue.")
+        sys.exit(1)
