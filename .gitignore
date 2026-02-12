@@ -1,13 +1,21 @@
 ```
-# Python
+# Database
+*.sql
+
+# Dependencies
+node_modules/
+.venv/
+venv/
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.egg-info/
+dist/
+build/
+target/
 
 # Logs and temp files
 *.log
 *.tmp
+*.swp
 
 # Environment
 .env
@@ -17,8 +25,20 @@ __pycache__/
 # Editors
 .vscode/
 .idea/
+*.pyc
+*.pyo
+*.pyd
 
-# Dependencies
-.venv/
-venv/
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+.coverage
+coverage/
+htmlcov/
+
+# Testing
+.pytest_cache/
+.mypy_cache/
 ```
