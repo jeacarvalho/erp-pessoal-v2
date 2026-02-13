@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class CategoryOut(BaseModel):
@@ -25,8 +25,16 @@ class FiscalItemOut(BaseModel):
     unit_price: float
     total_price: float
     category_id: Optional[int] = None
+    product_ean: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    @field_validator('product_ean', mode='before')
+    @classmethod
+    def convert_product_ean_to_string(cls, v):
+        if v is not None:
+            return str(v)
+        return v
 
 
 class FiscalNoteOut(BaseModel):

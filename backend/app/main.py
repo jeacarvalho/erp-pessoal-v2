@@ -3,7 +3,7 @@ import time
 import logging
 import os
 import re
-from datetime import date
+from datetime import date, datetime
 from typing import AsyncGenerator, List, Optional
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, status
@@ -402,6 +402,88 @@ def list_fiscal_notes(
     notes = result.unique().scalars().all()
     
     return [FiscalNoteOut.model_validate(note) for note in notes]
+
+
+class FiscalNoteCreate(BaseModel):
+    number: str
+    serie: str
+    cnpj: str
+    emission_date: datetime
+    total_value: float
+    seller_name: Optional[str] = None
+    access_key: Optional[str] = None
+
+
+class FiscalItemCreate(BaseModel):
+    description: str
+    quantity: float
+    unit_value: float
+    total_value: float
+    product_ean: Optional[str] = None
+
+
+@app.post("/fiscal-notes", response_model=FiscalNoteOut)
+def create_fiscal_note(note_data: FiscalNoteCreate, db: Session = Depends(get_db)) -> FiscalNoteOut:
+    """Cria uma nova nota fiscal."""
+    # Create the fiscal note
+    note = FiscalNote(
+        date=note_data.emission_date.date(),
+        total_amount=note_data.total_value,
+        seller_name=note_data.seller_name or "Unknown Seller",
+        access_key=note_data.access_key or f"KEY_{note_data.number}",
+        source_type=FiscalSourceType.SCRAPING,  # Using SCRAPING as manual entry type
+    )
+    db.add(note)
+    db.commit()
+    db.refresh(note)
+    
+    return FiscalNoteOut.model_validate(note)
+
+
+@app.post("/fiscal-notes/{note_id}/items", response_model=FiscalItemOut)
+def create_fiscal_item(
+    note_id: int, 
+    item_data: FiscalItemCreate, 
+    db: Session = Depends(get_db)
+) -> FiscalItemOut:
+    """Cria um novo item fiscal associado a uma nota fiscal."""
+    # Check if the note exists
+    note = db.query(FiscalNote).filter(FiscalNote.id == note_id).first()
+    if not note:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Nota fiscal com ID {note_id} não encontrada."
+        )
+    
+    # Check if there's a product mapping for this description and seller
+    product_mapping = db.execute(
+        select(ProductMapping).where(
+            (ProductMapping.raw_description == item_data.description) &
+            (ProductMapping.seller_name == note.seller_name)
+        )
+    ).scalar_one_or_none()
+    
+    product_ean = item_data.product_ean
+    if not product_ean and product_mapping:
+        product_ean = str(product_mapping.product_ean)  # Convert to string
+    
+    # Create the fiscal item
+    fiscal_item = FiscalItem(
+        note_id=note_id,
+        product_name=item_data.description,
+        quantity=item_data.quantity,
+        unit_price=item_data.unit_value,
+        total_price=item_data.total_value,
+        category_id=None,
+        product_ean=product_ean,
+    )
+    
+    db.add(fiscal_item)
+    db.commit()
+    db.refresh(fiscal_item)
+    
+    # Return the created item
+    return FiscalItemOut.model_validate(fiscal_item)
 
 
 @app.get("/fiscal-notes/{note_id}", response_model=FiscalNoteOut)
