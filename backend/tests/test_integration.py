@@ -139,23 +139,24 @@ def test_complete_item_lifecycle(client):
     # Step 4: The Ultimate Test (Import Process)
     # Create a FiscalNote
     fiscal_note_response = client.post(
-        "/fiscal-notes/",
+        "/fiscal-notes",
         json={
             "number": "12345",
             "serie": "1",
             "cnpj": "12345678000195",
             "emission_date": "2023-01-01T00:00:00",
-            "total_value": 15.99
+            "total_value": 15.99,
+            "seller_name": "Supermercado Real"
         }
     )
     assert fiscal_note_response.status_code == 200, f"Failed to create fiscal note: {fiscal_note_response.text}"
     fiscal_note_data = fiscal_note_response.json()
     fiscal_note_id = fiscal_note_data["id"]
-    assert fiscal_note_data["number"] == "12345"
+    assert fiscal_note_data["seller_name"] == "Supermercado Real"
     
     # Add a FiscalItem with the exact description "DESODORANTE XPTO 150ML"
     fiscal_item_response = client.post(
-        f"/fiscal-notes/{fiscal_note_id}/items/",
+        f"/fiscal-notes/{fiscal_note_id}/items",
         json={
             "description": "DESODORANTE XPTO 150ML",
             "quantity": 1,

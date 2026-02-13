@@ -11,21 +11,11 @@ venv/
 env/
 requirements.txt.bak
 
-# Logs and temp files
+# Logs
 *.log
-*.tmp
 
-# Environment
+# Environment variables
 .env
 .env.local
-*.env.*
-
-# Coverage
-.coverage
-coverage/
-htmlcov/
-
-# Testing
-.pytest_cache/
-.mypy_cache/
+.env.*
 ```
