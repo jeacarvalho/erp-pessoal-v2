@@ -5,28 +5,32 @@ __pycache__/
 *.pyo
 *.pyd
 
-# Dependencies
-.venv/
-venv/
-env/
-pip-log.txt
-pip-selfcheck.json
-
-# Testing
-.coverage
-htmlcov/
-.tox/
-.nox/
-coverage.xml
-*.cover
-.hypothesis/
-
 # Logs
 *.log
 
 # Environment
 .env
 .env.local
-.env.*
-.venv.bak/
+*.env.*
+
+# Dependencies
+venv/
+.venv/
+.env/
+
+# Coverage
+.coverage
+coverage/
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+
+# OS
+.DS_Store
+Thumbs.db
 ```

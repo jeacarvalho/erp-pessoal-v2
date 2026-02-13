@@ -4,9 +4,10 @@ import logging
 import os
 import re
 from datetime import date
-from typing import Generator, List, Optional
+from typing import AsyncGenerator, List, Optional
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, status
+from fastapi import FastAPI
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
@@ -52,7 +53,46 @@ def get_db() -> Generator[Session, None, None]:
         db.close()
 
 
-app = FastAPI(title="ERP Pessoal API")
+from contextlib import asynccontextmanager
+
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Garante que o banco tenha as categorias iniciais.
+
+    Em vez de checar apenas a existência de arquivo físico, verificamos
+    se a tabela de categorias está vazia. Se não houver nenhuma categoria,
+    executamos o seed.
+    """
+    
+    print(f"[lifespan] DATABASE_URL = {DATABASE_URL}")
+
+    # Create tables in the database
+    from .models import Base
+    from .database import engine
+    Base.metadata.create_all(bind=engine)
+
+    with SessionLocal() as db:
+        first_category = db.query(Category.id).first()
+        print(f"[lifespan] Primeira categoria encontrada: {first_category}")
+        if first_category is None:
+            print("[lifespan] Nenhuma categoria encontrada. Executando seed_categories...")
+            seed_categories(DATABASE_URL)
+        else:
+            print("[lifespan] Categorias já existentes. Seed não será executado.")
+    
+    yield  # Aqui o app fica disponível para receber requisições
+    
+    # Código após o yield é executado quando o app é desligado
+    print("[lifespan] Encerrando aplicação...")
+
+
+app = FastAPI(title="ERP Pessoal API", lifespan=lifespan)
 
 
 @app.get("/health")
@@ -61,25 +101,7 @@ def health_check():
     return {"status": "ok", "message": "Backend is running"}
 
 
-@app.on_event("startup")
-def startup_event() -> None:
-    """Garante que o banco tenha as categorias iniciais.
 
-    Em vez de checar apenas a existência de arquivo físico, verificamos
-    se a tabela de categorias está vazia. Se não houver nenhuma categoria,
-    executamos o seed.
-    """
-
-    print(f"[startup] DATABASE_URL = {DATABASE_URL}")
-
-    with SessionLocal() as db:
-        first_category = db.query(Category.id).first()
-        print(f"[startup] Primeira categoria encontrada: {first_category}")
-        if first_category is None:
-            print("[startup] Nenhuma categoria encontrada. Executando seed_categories...")
-            seed_categories(DATABASE_URL)
-        else:
-            print("[startup] Categorias já existentes. Seed não será executado.")
 
 
 
