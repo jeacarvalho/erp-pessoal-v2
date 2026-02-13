@@ -4,7 +4,7 @@ from sqlalchemy.pool import StaticPool
 import os
 
 # Use a default in-memory database for testing unless otherwise specified
-DATABASE_URL = os.getenv("SQLITE_DB_PATH", "sqlite:///:memory:")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///:memory:")
 
 engine = create_engine(
     DATABASE_URL,

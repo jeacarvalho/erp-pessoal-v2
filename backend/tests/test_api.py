@@ -13,23 +13,32 @@ from fastapi import FastAPI
 import pytest
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def test_engine():
     """Create an in-memory database engine for testing."""
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    # Make sure all tables are created
     Base.metadata.create_all(bind=engine)
     # Run seed to populate initial data
-    seed_categories("sqlite:///:memory:")
+    from sqlalchemy.orm import sessionmaker
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    try:
+        # Create a temporary database URL string for the seed function
+        temp_db_url = "sqlite:///:memory:"
+        seed_categories(temp_db_url)
+    finally:
+        session.close()
     return engine
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def TestingSessionLocal(test_engine):
     """Create a session factory for testing."""
     return sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def app(test_engine, TestingSessionLocal):
     """Create a test app with overridden database dependencies."""
     # Temporarily override the database URL to use in-memory database
@@ -84,7 +93,7 @@ def app(test_engine, TestingSessionLocal):
     return test_app
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def client(app):
     """Create a test client."""
     return TestClient(app)
