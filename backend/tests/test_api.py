@@ -7,13 +7,31 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import json
 from backend.app.seed import seed_categories
-from backend.app.models import Base, FiscalItem, FiscalNote, Category, FiscalSourceType
+from backend.app.models import Base, FiscalItem, FiscalNote, Category, FiscalSourceType, ProductMaster, ProductMapping
 from datetime import date
 from fastapi import FastAPI
+import pytest
 
 
-def create_test_app():
-    """Create a test version of the app with in-memory database"""
+@pytest.fixture(scope="module")
+def test_engine():
+    """Create an in-memory database engine for testing."""
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(bind=engine)
+    # Run seed to populate initial data
+    seed_categories("sqlite:///:memory:")
+    return engine
+
+
+@pytest.fixture(scope="module")
+def TestingSessionLocal(test_engine):
+    """Create a session factory for testing."""
+    return sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+
+
+@pytest.fixture(scope="module")
+def app(test_engine, TestingSessionLocal):
+    """Create a test app with overridden database dependencies."""
     # Temporarily override the database URL to use in-memory database
     original_db_path = os.environ.get("SQLITE_DB_PATH")
     original_db_url = os.environ.get("DATABASE_URL")
@@ -21,19 +39,22 @@ def create_test_app():
     os.environ["DATABASE_URL"] = "sqlite:///:memory:"
     os.environ["SQLITE_DB_PATH"] = ":memory:"
     
-    # Import after setting environment variables to ensure proper initialization
-    from backend.app.main import app, get_db
+    # Create a new app instance after setting environment variables
+    from backend.app.main import get_db, lifespan
+    from backend.app.main import app as main_app
+    from contextlib import asynccontextmanager
     
-    # Create in-memory database
-    test_engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    @asynccontextmanager
+    async def test_lifespan(app: FastAPI):
+        # Skip the seeding in the test lifecycle since we handle it separately
+        yield
     
-    # Create all tables
-    Base.metadata.create_all(bind=test_engine)
+    # Create a new FastAPI app with test configurations
+    test_app = FastAPI(title="ERP Pessoal API - TEST", lifespan=test_lifespan)
     
-    # Run seed to populate initial data
-    seed_categories("sqlite:///:memory:")
-    
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+    # Copy routes from the main app
+    for route in main_app.routes:
+        test_app.router.routes.append(route)
     
     def override_get_db():
         try:
@@ -42,29 +63,34 @@ def create_test_app():
         finally:
             db.close()
     
-    # Override the dependency
-    app.dependency_overrides[get_db] = override_get_db
+    test_app.dependency_overrides[get_db] = override_get_db
     
-    # Restore original values
-    if original_db_path:
-        os.environ["SQLITE_DB_PATH"] = original_db_path
-    else:
-        os.environ.pop("SQLITE_DB_PATH", None)
-        
-    if original_db_url:
-        os.environ["DATABASE_URL"] = original_db_url
-    else:
-        os.environ.pop("DATABASE_URL", None)
+    # Restore original values after the tests are done
+    def restore_env():
+        if original_db_path:
+            os.environ["SQLITE_DB_PATH"] = original_db_path
+        else:
+            os.environ.pop("SQLITE_DB_PATH", None)
+            
+        if original_db_url:
+            os.environ["DATABASE_URL"] = original_db_url
+        else:
+            os.environ.pop("DATABASE_URL", None)
     
-    return app, TestingSessionLocal
+    # Register the cleanup function
+    import atexit
+    atexit.register(restore_env)
+    
+    return test_app
 
 
-# Create test app and session
-test_app, TestingSessionLocal = create_test_app()
-client = TestClient(test_app)
+@pytest.fixture(scope="module")
+def client(app):
+    """Create a test client."""
+    return TestClient(app)
 
 
-def test_categories_endpoint_contains_expected_categories() -> None:
+def test_categories_endpoint_contains_expected_categories(client) -> None:
     """Garante que o endpoint /categories retorna categorias seeds esperadas."""
     print("Testing categories endpoint...")
     
@@ -85,7 +111,7 @@ def test_categories_endpoint_contains_expected_categories() -> None:
     print("SUCCESS: Categories endpoint returned expected categories")
 
 
-def test_fiscal_items_orphans_returns_correct_list() -> None:
+def test_fiscal_items_orphans_returns_correct_list(client, TestingSessionLocal) -> None:
     """Teste de Órfãos: Verifique se GET /fiscal-items/orphans retorna a lista correta e se o formato do JSON não mudou."""
     print("Testing /fiscal-items/orphans endpoint...")
     
@@ -145,7 +171,7 @@ def test_fiscal_items_orphans_returns_correct_list() -> None:
         db.close()
 
 
-def test_product_ean_registration() -> None:
+def test_product_ean_registration(client) -> None:
     """Teste de Cadastro de EAN: Simule o envio de um EAN de 13 dígitos para POST /products/eans/ e valide se ele é salvo com sucesso."""
     print("Testing POST /products/eans/ endpoint...")
     
@@ -170,7 +196,7 @@ def test_product_ean_registration() -> None:
     print("SUCCESS: EAN registration endpoint worked correctly")
 
 
-def test_product_mapping_creation() -> None:
+def test_product_mapping_creation(client) -> None:
     """Teste de Mapeamento: Verifique se o vínculo entre uma descrição (ex: "BANANA PRATA") e um EAN cria o registro correto na tabela product_mapping."""
     print("Testing product mapping creation...")
     
@@ -204,7 +230,7 @@ def test_product_mapping_creation() -> None:
     print("SUCCESS: Product mapping endpoint worked correctly")
 
 
-def test_family_category_preservation() -> None:
+def test_family_category_preservation(client) -> None:
     """Teste de Categorias da Família: Garantir que, ao associar um produto à Ana ou Carol, o category_id correto seja preservado."""
     print("Testing family category preservation...")
     

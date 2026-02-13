@@ -9,13 +9,19 @@ __pycache__/
 .venv/
 venv/
 env/
-requirements.txt.bak
+.env
+.env.local
+.env.*
 
 # Logs
 *.log
 
-# Environment variables
-.env
-.env.local
-.env.*
+# Coverage
+.coverage
+coverage/
+htmlcov/
+
+# Testing
+.pytest_cache/
+.mypy_cache/
 ```
