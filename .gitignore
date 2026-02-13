@@ -1,38 +1,23 @@
-```gitignore
+```
 # Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-
-# Dependencies
-.venv/
+.Python
+env/
 venv/
+.venv/
 .env
 .env.local
 .env.*
-
-# Logs
-*.log
-
-# Coverage
-.coverage
-htmlcov/
-coverage/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*.tmp
-
-# Build
-build/
-dist/
-target/
-
-# Testing
 .pytest_cache/
 .mypy_cache/
+.coverage
+coverage/
+htmlcov/
+
+# Testing
+tests/__pycache__/
+tests/*.pyc
 ```
