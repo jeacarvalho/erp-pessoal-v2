@@ -16,17 +16,20 @@ import pytest
 @pytest.fixture(scope="session")
 def test_engine():
     """Create an in-memory database engine for testing."""
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    from sqlalchemy.pool import StaticPool
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool
+    )
     # Make sure all tables are created
     Base.metadata.create_all(bind=engine)
-    # Run seed to populate initial data
+    # Run seed to populate initial data (after creating tables)
     from sqlalchemy.orm import sessionmaker
     Session = sessionmaker(bind=engine)
     session = Session()
     try:
-        # Create a temporary database URL string for the seed function
-        temp_db_url = str(engine.url)
-        seed_categories(temp_db_url)
+        seed_categories(str(engine.url))
     finally:
         session.close()
     return engine
@@ -45,7 +48,7 @@ def app(test_engine, TestingSessionLocal):
     original_db_path = os.environ.get("SQLITE_DB_PATH")
     original_db_url = os.environ.get("DATABASE_URL")
     
-    os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+    os.environ["DATABASE_URL"] = "sqlite:///:memory:?check_same_thread=False"
     os.environ["SQLITE_DB_PATH"] = ":memory:"
     
     # Create a new app instance after setting environment variables
@@ -65,12 +68,21 @@ def app(test_engine, TestingSessionLocal):
     for route in main_app.routes:
         test_app.router.routes.append(route)
     
+    # Create a session with the same approach as db_session for consistency
+    connection = test_engine.connect()
+    transaction = connection.begin()
+    db_session = TestingSessionLocal(bind=connection)
+    
+    # Make sure tables are created and seeded in the shared session/connection
+    Base.metadata.create_all(bind=connection)
+    # Run seed to populate initial data in the same connection
+    seed_categories(str(connection.engine.url))
+    
     def override_get_db():
         try:
-            db = TestingSessionLocal()
-            yield db
+            yield db_session
         finally:
-            db.close()
+            pass  # Don't close here as the session is managed by the fixture lifecycle
     
     test_app.dependency_overrides[get_db] = override_get_db
     
@@ -89,6 +101,14 @@ def app(test_engine, TestingSessionLocal):
     # Register the cleanup function
     import atexit
     atexit.register(restore_env)
+    
+    # Also register cleanup for the shared session
+    def cleanup_shared_session():
+        db_session.close()
+        transaction.rollback()
+        connection.close()
+    
+    atexit.register(cleanup_shared_session)
     
     return test_app
 
