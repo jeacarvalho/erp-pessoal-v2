@@ -4,20 +4,29 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.Python
-env/
-venv/
+
+# Dependencies
 .venv/
+venv/
+env/
+pip-log.txt
+pip-selfcheck.json
+
+# Testing
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# Logs
+*.log
+
+# Environment
 .env
 .env.local
 .env.*
-.pytest_cache/
-.mypy_cache/
-.coverage
-coverage/
-htmlcov/
-
-# Testing
-tests/__pycache__/
-tests/*.pyc
+.venv.bak/
 ```

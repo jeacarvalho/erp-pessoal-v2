@@ -3,33 +3,40 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 import pytest
+import os
+from unittest.mock import patch
 
-from backend.database import Base
-from backend.main import app
-from backend.models import Category, Product, ProductMapping, FiscalNote, FiscalItem
+# Temporarily set the DATABASE_URL environment variable to use in-memory database
+os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+
+from backend.app.models import Base, Category, ProductMaster, ProductMapping, FiscalNote, FiscalItem
+from backend.app.main import app
+from backend.app.database import engine, SessionLocal
 
 
 # Setup database in memory for testing
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"
 
-engine = create_engine(
+test_engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
     connect_args={"check_same_thread": False},
     poolclass=StaticPool,
 )
-TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
 
 
 @pytest.fixture(scope="module")
 def client():
     # Create tables in the in-memory database
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=test_engine)
     
-    with TestClient(app) as c:
-        yield c
+    # Mock the startup event to avoid database operations during startup
+    with patch('backend.app.main.SessionLocal'):
+        with TestClient(app) as c:
+            yield c
     
     # Clean up after tests
-    Base.metadata.drop_all(bind=engine)
+    Base.metadata.drop_all(bind=test_engine)
 
 
 def test_complete_item_lifecycle(client):
@@ -58,7 +65,7 @@ def test_complete_item_lifecycle(client):
         "/products/eans/",
         json={
             "ean": "7891234567890",
-            "name": "Desodorante XPTO",
+            "name_standard": "Desodorante XPTO",
             "category_id": 1,
             "price": 15.99
         }
