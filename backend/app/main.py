@@ -227,11 +227,8 @@ def _persist_parsed_note(
             )
         ).scalar_one_or_none()
         
-        # Prioriza o EAN do XML se estiver disponível
-        product_ean = item.ean
-        if product_ean:
-            logger.info(f"EAN do XML utilizado para '{item.name}' no vendedor '{parsed.seller_name}': EAN {product_ean}")
-        elif product_mapping:
+        product_ean = None
+        if product_mapping:
             product_ean = product_mapping.product_ean
             logger.info(f"Vínculo automático encontrado para '{item.name}' no vendedor '{parsed.seller_name}': EAN {product_ean}")
         else:
