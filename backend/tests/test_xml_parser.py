@@ -31,12 +31,12 @@ def test_parse_psyllium_velez(processor):
     
     parsed = processor.parse(xml_content.encode('utf-8'))
     
-    # Validações dos dados extraídos do XML do Psyllium [cite: 172]
-    assert parsed.seller_name == "A R G" [cite: 172]
-    assert parsed.access_key == "35260223692529000119550020003636811294702620" [cite: 172]
-    assert parsed.items[0].name == "Psyllium Velez 200g Puro Rico Em Fibras 100% Natural" [cite: 172]
-    assert parsed.items[0].product_ean == "7899936402322" [cite: 172]
-    assert float(parsed.items[0].unit_price) == 17.90 [cite: 172]
+    # Validações dos dados extraídos do XML do Psyllium
+    assert parsed.seller_name == "A R G"
+    assert parsed.access_key == "35260223692529000119550020003636811294702620"
+    assert parsed.items[0].name == "Psyllium Velez 200g Puro Rico Em Fibras 100% Natural"
+    assert parsed.items[0].ean == "7899936402322"
+    assert float(parsed.items[0].unit_price) == 17.90
 
 def test_parse_barilla_with_newline_cleanup(processor):
     """Garante que o nome 'EBAZAR.COM.BR.\\nLTDA' seja limpo corretamente."""
@@ -58,10 +58,10 @@ def test_parse_barilla_with_newline_cleanup(processor):
     
     parsed = processor.parse(xml_content.encode('utf-8'))
     
-    # Valida a limpeza da quebra de linha no vendedor [cite: 178]
-    assert "EBAZAR.COM.BR." in parsed.seller_name [cite: 178]
-    assert "\\n" not in parsed.seller_name [cite: 178]
-    assert parsed.items[0].product_ean == "7898951850064" [cite: 178]
+    # Valida a limpeza da quebra de linha no vendedor
+    assert "EBAZAR.COM.BR." in parsed.seller_name
+    assert "\\n" not in parsed.seller_name
+    assert parsed.items[0].ean == "7898951850064"
 
 def test_parse_eisenbahn_bulk_quantity(processor):
     """Valida a extração de quantidades e preços da Eisenbahn."""
@@ -83,7 +83,7 @@ def test_parse_eisenbahn_bulk_quantity(processor):
     
     parsed = processor.parse(xml_content.encode('utf-8'))
     
-    # Valida dados da Eisenbahn [cite: 183]
-    assert float(parsed.items[0].quantity) == 36.0 [cite: 183]
-    assert float(parsed.items[0].unit_price) == 3.09 [cite: 183]
-    assert parsed.items[0].product_ean == "7898367983790" [cite: 183]
+    # Valida dados da Eisenbahn
+    assert float(parsed.items[0].quantity) == 36.0
+    assert float(parsed.items[0].unit_price) == 3.09
+    assert parsed.items[0].ean == "7898367983790"

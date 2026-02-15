@@ -96,7 +96,11 @@ class XMLProcessor:
         if seller_name_el is None or not seller_name_el.text:
             raise ValueError("Nome do vendedor não encontrado no XML.")
 
-        seller_name = seller_name_el.text.strip()
+        # Clean up the seller name by removing newlines and extra whitespace
+        raw_seller_name = seller_name_el.text.strip() if seller_name_el.text else ""
+        # Handle both literal '\n' (backslash followed by n) and actual newlines
+        cleaned_seller_name = raw_seller_name.replace('\\n', ' ').replace('\n', ' ').replace('\r', ' ')
+        seller_name = ' '.join(cleaned_seller_name.split())
 
         # Valor Total: total/ICMSTot/vNF
         v_nf_el = find_first_with_ns(root, "vNF")
