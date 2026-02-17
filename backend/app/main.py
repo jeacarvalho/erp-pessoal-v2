@@ -227,10 +227,13 @@ def _persist_parsed_note(
             )
         ).scalar_one_or_none()
         
-        product_ean = None
-        if product_mapping:
+        # Prioritizes EAN from XML, falls back to product mapping if XML EAN is not available
+        product_ean = item.ean
+        if product_ean is None and product_mapping:
             product_ean = product_mapping.product_ean
             logger.info(f"Vínculo automático encontrado para '{item.name}' no vendedor '{parsed.seller_name}': EAN {product_ean}")
+        elif product_ean:
+            logger.info(f"EAN encontrado no XML para '{item.name}': {product_ean}")
         else:
             logger.info(f"Item sem EAN, aguardando mapeamento manual: '{item.name}' no vendedor '{parsed.seller_name}'")
 
