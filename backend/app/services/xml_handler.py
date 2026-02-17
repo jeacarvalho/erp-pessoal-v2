@@ -131,7 +131,9 @@ class XMLProcessor:
             # Extrair informações do produto
             def _get_text_from_prod(suffix: str) -> Optional[str]:
                 for child in prod_el:
-                    if child.tag.endswith(suffix) and child.text:
+                    # Check if tag ends with suffix, considering possible namespace
+                    tag_name = child.tag.split('}')[-1]  # Remove namespace prefix if present
+                    if tag_name == suffix and child.text:
                         return child.text.strip()
                 return None
 
