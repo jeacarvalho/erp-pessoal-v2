@@ -7,13 +7,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxml2-dev \
     libxslt1-dev \
     libffi-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-COPY backend/ ./backend/
+COPY backend/app ./app
 COPY data/ ./data/
 
 ENV PYTHONUNBUFFERED=1
