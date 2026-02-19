@@ -1,20 +1,41 @@
-version: "3.9"
+version: '3.8'
 
 services:
   backend:
     build:
-      context: ./backend
-    container_name: erp-pessoal-backend
+      context: .
+      dockerfile: Dockerfile
+    container_name: erp-backend
     restart: unless-stopped
-    environment:
-      - SQLITE_DB_PATH=/data/app.db
-    volumes:
-      - ./backend/app:/app
-      - ./data/sqlite:/data
     ports:
       - "8000:8000"
-    command: >
-      uvicorn app.main:app
-      --host 0.0.0.0
-      --port 8000
-      --reload
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DATABASE_URL=sqlite:///data/app.db
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  nginx:
+    image: nginx:alpine
+    container_name: erp-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - backend
+    networks:
+      - erp-network
+
+networks:
+  erp-network:
+    driver: bridge

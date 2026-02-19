@@ -26,8 +26,8 @@ data/*.json
 node_modules/
 dist/
 .env
-.env.production
 .env.local
+!.env.production
 
 # Android
 android/app/build/
@@ -47,3 +47,7 @@ Thumbs.db
 
 # Logs
 *.log
+
+# SSL certificates
+ssl/
+
