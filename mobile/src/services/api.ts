@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Create an Axios instance with base configuration
 const api = axios.create({
-  baseURL: 'http://localhost:8000',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
 });
 
 // Define TypeScript interfaces
@@ -38,6 +38,8 @@ export const importNoteFromUrl = async (url: string): Promise<FiscalNoteResponse
       if (error.response) {
         // Server responded with error status
         switch (error.response.status) {
+          case 409:
+            throw new Error('Nota fiscal já importada anteriormente.');
           case 422:
             throw new Error('URL inválida ou não suportada. Por favor, verifique a URL e tente novamente.');
           case 400:
