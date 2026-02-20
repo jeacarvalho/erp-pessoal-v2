@@ -144,6 +144,15 @@ Se o requisito do usuário estiver mal definido:
 
 ---
 
+## Eficiência de Tokens
+- Nunca releia arquivos que você acabou de escrever ou editar. Você conhece o conteúdo.
+- Nunca execute comandos novamente para "verificar", a menos que o resultado seja incerto.
+- Não repita grandes blocos de código ou conteúdo de arquivos, a menos que seja solicitado.
+- Agrupe edições relacionadas em operações únicas. Não faça 5 edições quando uma só resolve.
+- Ignore confirmações como "Vou continuar...". Simplesmente faça.
+- Se uma tarefa precisa de uma chamada de ferramenta, não use 3. Planeje antes de agir.
+- Não resuma o que você acabou de fazer, a menos que o resultado seja ambíguo ou você precise de informações adicionais.
+
 ## 📌 Formato de Resposta
 
 Sempre que entregar código:
@@ -179,42 +188,163 @@ Sistema de gestão financeira pessoal com controle de:
 
 ### Stack Tecnológico
 - **Backend**: Python 3.10+, FastAPI, SQLAlchemy, SQLite
-- **Frontend**: React, TypeScript
-- **Testes**: pytest (cobertura mínima 80%)
+- **Frontend Web**: Streamlit (não há React/TypeScript ainda)
+- **Testes**: pytest (66 testes, 70% cobertura mínima)
+- **Linter**: Ruff
+- **Scraping**: Playwright, BeautifulSoup4
 - **Infra**: Docker (opcional)
 
 ### Convenções do Projeto
 - Commits em português
 - Nunca commitar sem autorização explícita do usuário
 - Sempre rodar testes após alterações
-- Manter cobertura de testes acima de 65%
+- Manter cobertura de testes acima de 70%
 - Código em inglês, comentários em português
 
 ### Estrutura de Pastas
 ```
-/backend
-  /app
-    /models       # SQLAlchemy models
-    /schemas      # Pydantic schemas
-    /services     # Business logic
-    main.py       # FastAPI app
-  /tests          # Test files
-/frontend
-  /src
-    /components
-    /pages
-    /services
+/
+  /backend
+    /app
+      /models       # SQLAlchemy models
+      /schemas      # Pydantic schemas
+      /services     # Business logic (xml_handler, scraper_handler, browser_fetcher)
+      main.py       # FastAPI app
+    /tests          # 66 testes (pytest)
+  /web              # Interface Streamlit
+  /mobile           # App mobile
+  /data             # Dados (SQLite, backups)
 ```
+
+### Comandos do Projeto
+- **Rodar API**: `cd backend && uvicorn app.main:app --reload`
+- **Rodar Web**: `cd web && streamlit run app_streamlit.py`
+- **Rodar testes**: `cd backend && python3 -m pytest`
+- **Linter (Ruff)**: `cd backend && ruff check app/`
+- **Cobertura**: `cd backend && python3 -m pytest --cov=backend/app --cov-report=term-missing`
+
+### Configuração de Ambientes (DEV/PROD)
+
+O sistema suporta configuração flexível via variáveis de ambiente para facilitar a troca entre ambientes.
+
+#### Variáveis de Ambiente
+
+| Variável | Descrição | Default |
+|----------|------------|---------|
+| `DATABASE_URL` | URL do banco de dados | `sqlite:///data/sqlite/app.db` |
+| `API_HOST` | Host do servidor API | `0.0.0.0` |
+| `API_PORT` | Porta do servidor API | `8000` |
+| `API_BASE_URL` | URL base para frontends | `http://localhost:8000` |
+| `BACKEND_URL` | URL do backend para frontends web | `http://localhost:8000` |
+| `ENV` | Ambiente (development/production) | `development` |
+
+#### DEV Local (sem tunnel)
+
+```bash
+# Terminal 1 - Backend
+cd backend && uvicorn app.main:app --reload
+
+# Terminal 2 - Web Streamlit
+cd web && streamlit run app_streamlit.py
+
+# Terminal 3 - Web Flet
+cd web/app && python main.py
+
+# Mobile (desenvolvimento local)
+cd mobile && npm run dev
+```
+
+#### DEV com Tunnel (testar mobile)
+
+```bash
+# 1. Criar tunnel Cloudflare
+cloudflare tunnel --url http://localhost:8000
+
+# 2. Copiar URL gerada (ex: https://xxx.trycloudflare.com)
+
+# 3. Atualizar frontend web
+BACKEND_URL=https://xxx.trycloudflare.com streamlit run web/app_streamlit.py
+
+# 4. Atualizar mobile/.env
+VITE_API_URL=https://xxx.trycloudflare.com
+```
+
+#### PROD (VPS)
+
+```bash
+# Usar docker-compose (configura automaticamente)
+docker-compose up -d
+
+# Para IP externo, criar .env com:
+# API_BASE_URL=http://<IP-DA-VPS>:8000
+# BACKEND_URL=http://<IP-DA-VPS>:8000
+```
+
+#### Arquivos de Configuração
+
+- `.env` (não commitado) - configurações locais
+- `.env.example` - template para variáveis
+- `mobile/.env` - URL da API para app mobile
+- `mobile/.env.production` - URL para produção
+
+####Nota Importante
+Nunca hardcode URLs de backend nos frontends. Sempre use `os.getenv("BACKEND_URL", "http://localhost:8000")` para permitir configuração externa.
+
+### Versionamento e Changelog
+
+Este projeto segue [Semantic Versioning](https://semver.org/) e [Conventional Commits](https://www.conventionalcommits.org/).
+
+#### Formato de Commits
+
+```
+<tipo>(<escopo>): <descrição>
+
+Exemplos:
+feat(api): adiciona endpoint de categorias
+fix(scraper): corrige parsing de URL específica
+docs(readme): atualiza instruções de instalação
+refactor(models): simplifica relação entre entidades
+test(api): adiciona teste de integração
+```
+
+| Tipo | Descrição |
+|------|-----------|
+| `feat` | Nova funcionalidade |
+| `fix` | Correção de bug |
+| `docs` | Documentação |
+| `style` | Formatação (sem mudança de código) |
+| `refactor` | Refatoração |
+| `test` | Adição/atualização de testes |
+| `chore` | Tarefas de manutenção |
+
+#### Scripts de Release
+
+```bash
+# Gerar changelog desde a última tag
+./scripts/generate_changelog.sh
+
+# Criar release (patch, minor ou major)
+./scripts/release.sh patch        # v1.0.1
+./scripts/release.sh minor        # v1.1.0
+./scripts/release.sh major        # v2.0.0
+```
+
+#### Arquivos de Versionamento
+
+- `CHANGELOG.md` - Histórico de alterações por versão
+- `scripts/generate_changelog.sh` - Gera changelog automaticamente
+- `scripts/release.sh` - Cria tags e sugere changelog
 
 ### Fluxo de Trabalho Padrão
 1. Analisar codebase e entender contexto
 2. Propor solução antes de implementar (se complexo)
 3. Implementar seguindo Clean Code
 4. Adicionar/atualizar testes
-5. Verificar cobertura de testes
-6. Rodar linter/type checker se disponível
-7. Commit apenas quando solicitado explicitamente
+5. Rodar linter: `ruff check app/`
+6. Rodar testes: `python3 -m pytest`
+7. Verificar cobertura (mínimo 70%)
+8. Commit apenas quando solicitado explicitamente
 
 ---
 
-**Última atualização**: 2026-02-18
+**Última atualização**: 2026-02-20

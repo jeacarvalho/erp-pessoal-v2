@@ -4,10 +4,9 @@ import logging
 import os
 import re
 from datetime import date, datetime
-from typing import AsyncGenerator, List, Optional
+from typing import AsyncGenerator, Generator, List, Optional
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, status
-from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
