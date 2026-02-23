@@ -1,0 +1,16 @@
+[Unit]
+Description=ERP Pessoal Web Streamlit
+After=network.target erp-backend.service
+Wants=erp-backend.service
+
+[Service]
+Type=simple
+User=s015533607
+WorkingDirectory=/home/s015533607/Documentos/desenv/erp-pessoal-v2/web
+Environment="BACKEND_URL=http://localhost:8000"
+ExecStart=/usr/bin/python3 -m streamlit run app_streamlit.py --server.port 8501 --server.address 0.0.0.0
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
