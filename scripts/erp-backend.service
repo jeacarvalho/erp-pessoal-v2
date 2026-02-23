@@ -1,0 +1,14 @@
+[Unit]
+Description=ERP Pessoal Backend API
+After=network.target
+
+[Service]
+Type=simple
+User=s015533607
+WorkingDirectory=/home/s015533607/Documentos/desenv/erp-pessoal-v2/backend
+ExecStart=/usr/bin/python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

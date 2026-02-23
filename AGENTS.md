@@ -391,6 +391,8 @@ test(api): adiciona teste de integração
 - **Streamlit BACKEND_URL**: Sempre usar `f"{BACKEND_URL}/endpoint"` ou concatenar, NUNCA string literal como `"BACKEND_URL/endpoint"` - isso causa erro "Request URL is missing 'http://'"
 - **Java 21**: Build de APK requer Java 21, não usar Java 8
 - **Mobile .env**: Após alterar .env, sempre fazer rebuild (`npm run build && npx cap sync android && ./gradlew assembleDebug`)
+- **Testes com mocks**: Evitar `reload_database_modules` com `xml_handler` e `scraper_handler` - pode quebrar mocks de outros testes (usar dependência explícita ou fixture isolada)
+- **ITEMS_TABLE em testes**: Sempre incluir colunas `Vl. Unit.` e `Vl. Total` no HTML mockado para parsing correto dos itens
 
 ---
 

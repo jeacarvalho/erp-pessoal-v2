@@ -24,14 +24,13 @@ import pytest
 def reload_database_modules():
     """Force reload of database-related modules to ensure clean state."""
     # Remove cached modules to force reload
+    # Note: scraper_handler is intentionally excluded to avoid breaking mocks in other tests
     modules_to_remove = [
         "backend.app.database",
         "backend.app.main",
         "backend.app.models",
         "backend.app.seed",
         "backend.app.schemas",
-        "backend.app.services.xml_handler",
-        "backend.app.services.scraper_handler",
     ]
     for module in modules_to_remove:
         if module in sys.modules:
@@ -394,3 +393,27 @@ def test_family_category_preservation(client) -> None:
     except Exception as e:
         print(f"Error in test_family_category_preservation: {str(e)}")
         raise
+
+
+def test_health_check(test_engine):
+    """Test health check endpoint."""
+    reload_database_modules()
+
+    from backend.app.main import app
+
+    client = TestClient(app)
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json()["status"] == "ok"
+
+
+def test_list_fiscal_notes_empty(test_engine):
+    """Test listing fiscal notes when empty."""
+    reload_database_modules()
+
+    from backend.app.main import app
+
+    client = TestClient(app)
+    response = client.get("/fiscal-notes")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)

@@ -18,8 +18,8 @@ from backend.app.services.xml_handler import ParsedItem, ParsedNote
 # Helper to add items table to HTML
 ITEMS_TABLE = """
 <table>
-    <tr><th>Produto</th><th>Qtd</th><th>Un</th></tr>
-    <tr><td>Item Teste</td><td>1</td><td>UN</td></tr>
+    <tr><th>Produto</th><th>Qtd</th><th>Un</th><th>Vl. Unit.</th><th>Vl. Total</th></tr>
+    <tr><td>Item Teste</td><td>1</td><td>UN</td><td>10,00</td><td>10,00</td></tr>
 </table>
 """
 
@@ -435,3 +435,31 @@ class TestScraperImporter:
 
                     assert result.seller_name == "Browser Only"
                     mock_get.assert_not_called()
+
+    def test_convert_qrcode_url_already_full_format(self):
+        """Should return URL unchanged if already has 5+ fields."""
+        importer = ScraperImporter()
+        url = "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode?p=33260210697697000660651070003680661266494182|2|1|1|111BAB453B94694F3E8BA0AFE5742229BDBCA316"
+        result = importer._convert_qrcode_url(url)
+        assert result == url
+
+    def test_convert_qrcode_url_short_format(self):
+        """Should convert 3-field QR code URL to full format."""
+        importer = ScraperImporter()
+        url = "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode?p=33260210697697000660651070003680661266494182|2|1"
+        result = importer._convert_qrcode_url(url)
+        assert "|2|1|1|" in result
+
+    def test_convert_qrcode_url_no_p_param(self):
+        """Should return URL unchanged if no 'p' param."""
+        importer = ScraperImporter()
+        url = "https://example.com/page"
+        result = importer._convert_qrcode_url(url)
+        assert result == url
+
+    def test_convert_qrcode_url_invalid_key(self):
+        """Should return URL unchanged if access key is invalid."""
+        importer = ScraperImporter()
+        url = "https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode?p=123|2|1"
+        result = importer._convert_qrcode_url(url)
+        assert result == url

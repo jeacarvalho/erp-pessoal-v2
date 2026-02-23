@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sun, Moon, Scan, Receipt, ChartBar, Gear, QrCode } from '@phosphor-icons/react';
 import QRCodeScanner from './components/QRCodeScanner';
-import { importNoteFromUrl } from './services/api';
+import { importNoteFromUrl, syncOfflineNotes, getOfflineNotesPending } from './services/api';
 import { Toast } from './components/ui';
 
 type TabType = 'scanner' | 'notes' | 'stats' | 'settings';
@@ -12,13 +12,38 @@ function App() {
   const [activeTab, setActiveTab] = useState<TabType>('scanner');
   const [toast, setToast] = useState<{ type: 'success' | 'error' | 'warning' | 'info'; message: string } | null>(null);
 
+  useEffect(() => {
+    const checkPendingAndSync = async () => {
+      const pending = getOfflineNotesPending();
+      
+      if (pending.length > 0) {
+        setToast({ type: 'info', message: `Sincronizando ${pending.length} nota(s) offline...` });
+        
+        try {
+          const result = await syncOfflineNotes();
+          if (result.success > 0) {
+            setToast({ type: 'success', message: `${result.success} nota(s) sincronizada(s) com sucesso!` });
+          } else if (result.failed > 0) {
+            setToast({ type: 'warning', message: `${result.failed} nota(s) falharam ao sincronizar.` });
+          }
+        } catch {
+          setToast({ type: 'error', message: 'Erro ao sincronizar notas offline.' });
+        }
+      }
+    };
+
+    checkPendingAndSync();
+  }, []);
+
   const handleQRCodeDetected = async (decodedText: string): Promise<void> => {
+    console.log('[App] QR Code detected:', decodedText);
     try {
       await importNoteFromUrl(decodedText);
       setToast({ type: 'success', message: 'Nota fiscal importada com sucesso!' });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro ao importar nota fiscal';
-      setToast({ type: 'error', message });
+      console.error('[App] Error:', err);
+      setToast({ type: 'error', message: message + ' [Toque para ver detalhes]' });
     }
   };
 

@@ -39,6 +39,7 @@ def test_category_hierarchy_seed_creates_expected_structure() -> None:
     # Realiza o seed e verifica tudo na mesma sessão
     with session_factory() as session:
         from app.seed import _create_category_hierarchy
+
         _create_category_hierarchy(session)
         session.commit()
 
@@ -125,3 +126,8 @@ def test_fiscal_item_association_with_note_and_category() -> None:
         assert fetched_item.category is not None
         assert fetched_item.category.name == "Mercado"
 
+
+def test_seed_categories_function() -> None:
+    """Test the seed_categories function."""
+    database_url = "sqlite+pysqlite:///:memory:"
+    seed_categories(database_url)
