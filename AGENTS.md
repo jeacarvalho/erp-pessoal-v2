@@ -189,6 +189,7 @@ Sistema de gestão financeira pessoal com controle de:
 ### Stack Tecnológico
 - **Backend**: Python 3.10+, FastAPI, SQLAlchemy, SQLite
 - **Frontend Web**: Streamlit (não há React/TypeScript ainda)
+- **Mobile**: React + Capacitor (Android APK)
 - **Testes**: pytest (66 testes, 70% cobertura mínima)
 - **Linter**: Ruff
 - **Scraping**: Playwright, BeautifulSoup4
@@ -218,10 +219,28 @@ Sistema de gestão financeira pessoal com controle de:
 
 ### Comandos do Projeto
 - **Rodar API**: `cd backend && uvicorn app.main:app --reload`
-- **Rodar Web**: `cd web && streamlit run app_streamlit.py`
+- **Rodar Web**: `cd web && BACKEND_URL=http://localhost:8000 streamlit run app_streamlit.py`
+- **Rodar Mobile dev**: `cd mobile && npm run dev`
+- **Build APK**: `cd mobile && npm run build && npx cap sync android && cd android && ./gradlew assembleDebug` (requer Java 21)
+- **Build APK**: `cd mobile && npm run build && npx cap sync android && cd android && ./gradlew assembleDebug`
 - **Rodar testes**: `cd backend && python3 -m pytest`
 - **Linter (Ruff)**: `cd backend && ruff check app/`
 - **Cobertura**: `cd backend && python3 -m pytest --cov=backend/app --cov-report=term-missing`
+
+### Mobile - Configuração Importante
+- O app mobile usa **Capacitor** (não React Native puro)
+- **Java 21** é necessário para build do APK (export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64)
+- O IP do backend deve ser configurado em `mobile/.env`:
+  - Desenvolvimento local: `VITE_API_URL=http://192.168.X.X:8000`
+  - O arquivo `mobile/.env.example` serve como template
+- A API URL é lida em `mobile/src/services/api.ts` via `import.meta.env.VITE_API_URL`
+- Para rebuildar após mudança no .env: `npm run build && npx cap sync android && ./gradlew assembleDebug`
+
+### Sistema de Importação de NFC-e (QR Code)
+- O backend converte automaticamente URLs de QR code (3 campos) para o formato completo (5 campos)
+- Padrão RJ: `https://consultadfe.fazenda.rj.gov.br/consultaNFCe/QRCode?p={chave}|2|1|1|{assinatura}`
+- O browser fetcher sempre roda em modo **headless** (silencioso, sem abrir janela)
+- URLs já processadas são salvas em `data/processed_urls_backup.json`
 
 ### Configuração de Ambientes (DEV/PROD)
 
@@ -245,13 +264,18 @@ O sistema suporta configuração flexível via variáveis de ambiente para facil
 cd backend && uvicorn app.main:app --reload
 
 # Terminal 2 - Web Streamlit
-cd web && streamlit run app_streamlit.py
+cd web && BACKEND_URL=http://localhost:8000 streamlit run app_streamlit.py
 
 # Terminal 3 - Web Flet
 cd web/app && python main.py
 
 # Mobile (desenvolvimento local)
 cd mobile && npm run dev
+
+# Para testar mobile na mesma rede WiFi:
+# 1. Descobrir IP local: hostname -I
+# 2. Atualizar mobile/.env: VITE_API_URL=http://192.168.X.X:8000
+# 3. Rebuild APK: npm run build && npx cap sync android && cd android && ./gradlew assembleDebug
 ```
 
 #### DEV com Tunnel (testar mobile)
@@ -284,10 +308,28 @@ docker-compose up -d
 
 - `.env` (não commitado) - configurações locais
 - `.env.example` - template para variáveis
-- `mobile/.env` - URL da API para app mobile
-- `mobile/.env.production` - URL para produção
+- `mobile/.env` - URL da API para app mobile (desenvolvimento local)
+- `mobile/.env.production` - URL para produção (build do APK)
+- `scripts/erp-backend-systemd.service` - Serviço systemd para API
+- `scripts/erp-web-systemd.service` - Serviço systemd para Web
 
-####Nota Importante
+#### Serviços systemd (inicialização automática)
+
+```bash
+# Instalar serviços
+cd scripts
+sudo ./install_systemd.sh
+
+# Habilitar inicialização automática
+sudo systemctl enable erp-backend erp-web
+
+# Gerenciar serviços
+sudo systemctl start erp-backend erp-web
+sudo systemctl stop erp-backend erp-web
+sudo systemctl status erp-backend erp-web
+```
+
+#### Nota Importante
 Nunca hardcode URLs de backend nos frontends. Sempre use `os.getenv("BACKEND_URL", "http://localhost:8000")` para permitir configuração externa.
 
 ### Versionamento e Changelog
@@ -345,6 +387,11 @@ test(api): adiciona teste de integração
 7. Verificar cobertura (mínimo 70%)
 8. Commit apenas quando solicitado explicitamente
 
+### Armadilhas Comuns (History)
+- **Streamlit BACKEND_URL**: Sempre usar `f"{BACKEND_URL}/endpoint"` ou concatenar, NUNCA string literal como `"BACKEND_URL/endpoint"` - isso causa erro "Request URL is missing 'http://'"
+- **Java 21**: Build de APK requer Java 21, não usar Java 8
+- **Mobile .env**: Após alterar .env, sempre fazer rebuild (`npm run build && npx cap sync android && ./gradlew assembleDebug`)
+
 ---
 
-**Última atualização**: 2026-02-20
+**Última atualização**: 2026-02-23
