@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "cap:sync": "npm run build && npx cap sync android",
     "cap:open": "npx cap open android",
-    "cap:build": "npm run build && npx cap sync android && npx cap android build --release"
+    "cap:build": "npm run build && npx cap sync android && npx cap android build"
   },
   "dependencies": {
     "@capacitor/app": "^8.0.1",

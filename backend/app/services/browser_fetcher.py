@@ -70,12 +70,11 @@ class BrowserHTMLFetcher:
             html = _fetch_once(p, headless=self._options.headless)
 
             # Se ainda parecer a página genérica da SEFAZ-RJ, tenta uma segunda
-            # vez com browser visível (alguns bloqueios diferenciam headless).
+            # vez com headless=True (mantém silencioso)
             if _looks_like_rj_block_page(html) and self._options.headless:
-                html = _fetch_once(p, headless=False)
+                html = _fetch_once(p, headless=True)
 
         return html
 
 
 __all__ = ["BrowserHTMLFetcher", "BrowserFetchOptions"]
-

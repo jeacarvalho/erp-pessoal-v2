@@ -30,7 +30,7 @@ def fetch_price_comparison(product_name: str):
     """Fetch price comparison data from the backend API"""
     try:
         response = httpx.get(
-            f"BACKEND_URL/analytics/price-comparison?product_name={product_name}"
+            f"{BACKEND_URL}/analytics/price-comparison?product_name={product_name}"
         )
         response.raise_for_status()
         return response.json()
@@ -45,19 +45,19 @@ def fetch_price_comparison(product_name: str):
 @st.cache_data(ttl=60)  # Cache for 60 seconds
 def get_categories():
     """Get categories from backend with caching"""
-    return fetch_data("BACKEND_URL/categories")
+    return fetch_data(f"{BACKEND_URL}/categories")
 
 
 @st.cache_data(ttl=60)  # Cache for 60 seconds
 def get_transactions():
     """Get transactions from backend with caching"""
-    return fetch_data("BACKEND_URL/transactions")
+    return fetch_data(f"{BACKEND_URL}/transactions")
 
 
 @st.cache_data(ttl=60)  # Cache for 60 seconds
 def get_fiscal_items():
     """Get fiscal items from backend with caching"""
-    return fetch_data("BACKEND_URL/fiscal-items")
+    return fetch_data(f"{BACKEND_URL}/fiscal-items")
 
 
 def main():
@@ -168,7 +168,7 @@ def main():
                         # Call backend API for URL import
                         import_payload = {"url": url, "use_browser": use_browser}
                         response = httpx.post(
-                            "BACKEND_URL/import/url", json=import_payload
+                            f"{BACKEND_URL}/import/url", json=import_payload
                         )
 
                         if response.status_code == 200:
@@ -199,7 +199,9 @@ def main():
                             }
 
                             # Call backend API for XML import
-                            response = httpx.post("BACKEND_URL/import/xml", files=files)
+                            response = httpx.post(
+                                f"{BACKEND_URL}/import/xml", files=files
+                            )
 
                             if response.status_code == 200:
                                 result = response.json()
@@ -343,7 +345,7 @@ def main():
 
                 # Check if the EAN exists in the database
                 try:
-                    response = httpx.get(f"BACKEND_URL/products/eans/{ean_code}")
+                    response = httpx.get(f"{BACKEND_URL}/products/eans/{ean_code}")
                     if response.status_code == 200:
                         product_info = response.json()
                         st.info(
@@ -356,7 +358,7 @@ def main():
                         # Fetch orphan fiscal items (items without product_ean)
                         try:
                             fiscal_response = httpx.get(
-                                "BACKEND_URL/fiscal-items/orphans"
+                                f"{BACKEND_URL}/fiscal-items/orphans"
                             )
                             if fiscal_response.status_code == 200:
                                 orphan_items = fiscal_response.json()
@@ -394,7 +396,7 @@ def main():
 
                                             try:
                                                 mapping_response = httpx.post(
-                                                    "BACKEND_URL/product-mappings/",
+                                                    f"{BACKEND_URL}/product-mappings/",
                                                     json=mapping_payload,
                                                 )
                                                 if mapping_response.status_code == 200:
@@ -453,7 +455,7 @@ def main():
 
                                 try:
                                     register_response = httpx.post(
-                                        "BACKEND_URL/products/eans/",
+                                        f"{BACKEND_URL}/products/eans/",
                                         json=payload,
                                     )
                                     if register_response.status_code == 200:
@@ -465,7 +467,7 @@ def main():
                                         # Get the raw description from the orphan items if any
                                         try:
                                             fiscal_response = httpx.get(
-                                                "BACKEND_URL/fiscal-items/orphans"
+                                                f"{BACKEND_URL}/fiscal-items/orphans"
                                             )
                                             if fiscal_response.status_code == 200:
                                                 orphan_items = fiscal_response.json()
@@ -488,7 +490,7 @@ def main():
                                                         }
 
                                                         mapping_response = httpx.post(
-                                                            "BACKEND_URL/product-mappings/",
+                                                            f"{BACKEND_URL}/product-mappings/",
                                                             json=mapping_payload,
                                                         )
                                                         if (

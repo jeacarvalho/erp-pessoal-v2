@@ -54,7 +54,10 @@ class DefaultSefazAdapter(BaseSefazAdapter):
 
         # Detecção de páginas de bloqueio / acesso negado (ex.: SEFAZ-RJ).
         normalized_text = soup.get_text(" ", strip=True).lower()
-        if "acesso negado ao portal" in normalized_text or "acesso bloqueado" in normalized_text:
+        if (
+            "acesso negado ao portal" in normalized_text
+            or "acesso bloqueado" in normalized_text
+        ):
             raise ValueError(
                 "Acesso à página da NFC-e foi negado pela SEFAZ. Conteúdo de nota não disponível."
             )
@@ -83,44 +86,46 @@ class DefaultSefazAdapter(BaseSefazAdapter):
         if seller_div:
             seller_name = seller_div.get_text(strip=True)
             logger.info(f"[fiscal-items] seller_name lido: {seller_name}")
-            
+
             # Procura pelo CNPJ que está na div seguinte
             cnpj_div = seller_div.find_next_sibling("div", class_="text")
             if cnpj_div:
                 cnpj_text = cnpj_div.get_text(strip=True)
                 if "CNPJ:" in cnpj_text.upper():
                     return f"{seller_name}; {cnpj_text}"
-            
+
             return seller_name
-        
+
         # Se não encontrar o formato específico, tenta métodos alternativos
         for tag_name in ("h1", "h2"):
             tag = soup.find(tag_name)
             if tag and tag.get_text(strip=True):
                 return tag.get_text(strip=True)
-        
+
         return "Estabelecimento Desconhecido"
 
     def _extract_access_key(self, soup: BeautifulSoup) -> str:
         # First, try to find the access key using specific HTML elements
         # Look for elements near "Chave de acesso" text
         import re
-        
+
         # Look for span elements with class 'chave' which often contain the access key
-        chave_spans = soup.find_all('span', class_='chave')
+        chave_spans = soup.find_all("span", class_="chave")
         if chave_spans:
             raw_key = chave_spans[0].get_text(strip=True)
             # Clean up the key (remove spaces, check if it's 44 digits)
-            clean_key = re.sub(r'\s+', '', raw_key)
+            clean_key = re.sub(r"\s+", "", raw_key)
             if len(clean_key) == 44 and clean_key.isdigit():
                 # Format the key nicely with spaces every 4 digits
-                formatted_key = ' '.join([clean_key[i:i+4] for i in range(0, len(clean_key), 4)])
+                formatted_key = " ".join(
+                    [clean_key[i : i + 4] for i in range(0, len(clean_key), 4)]
+                )
                 return formatted_key
-        
+
         # Also look for strong tags that might contain "Chave de acesso" followed by the key
-        strong_tags = soup.find_all('strong')
+        strong_tags = soup.find_all("strong")
         for tag in strong_tags:
-            if 'chave de acesso' in tag.get_text(strip=True).lower():
+            if "chave de acesso" in tag.get_text(strip=True).lower():
                 # Look for the next sibling that might contain the key
                 next_sibling = tag.next_sibling
                 while next_sibling and len(next_sibling.strip()) == 0:
@@ -129,49 +134,62 @@ class DefaultSefazAdapter(BaseSefazAdapter):
                     # Extract potential key from the text following the "Chave de acesso" tag
                     potential_key = next_sibling.strip()
                     # Clean up the key
-                    clean_key = re.sub(r'[^\d\s]', '', potential_key)  # Keep only digits and spaces
-                    clean_key = re.sub(r'\s+', '', clean_key)  # Remove all spaces temporarily
+                    clean_key = re.sub(
+                        r"[^\d\s]", "", potential_key
+                    )  # Keep only digits and spaces
+                    clean_key = re.sub(
+                        r"\s+", "", clean_key
+                    )  # Remove all spaces temporarily
                     if len(clean_key) == 44 and clean_key.isdigit():
                         # Format the key nicely with spaces every 4 digits
-                        formatted_key = ' '.join([clean_key[i:i+4] for i in range(0, len(clean_key), 4)])
+                        formatted_key = " ".join(
+                            [clean_key[i : i + 4] for i in range(0, len(clean_key), 4)]
+                        )
                         return formatted_key
-                
+
                 # Also check parent's siblings
                 parent = tag.parent
                 if parent:
                     # Look for spans or other elements within the parent that might contain the key
                     for child in parent.children:
-                        if child != tag and hasattr(child, 'get_text'):
+                        if child != tag and hasattr(child, "get_text"):
                             child_text = child.get_text(strip=True)
                             if child_text and len(child_text) >= 44:
                                 # Clean up the key
-                                clean_key = re.sub(r'\s+', '', child_text)
+                                clean_key = re.sub(r"\s+", "", child_text)
                                 if len(clean_key) == 44 and clean_key.isdigit():
                                     # Format the key nicely with spaces every 4 digits
-                                    formatted_key = ' '.join([clean_key[i:i+4] for i in range(0, len(clean_key), 4)])
+                                    formatted_key = " ".join(
+                                        [
+                                            clean_key[i : i + 4]
+                                            for i in range(0, len(clean_key), 4)
+                                        ]
+                                    )
                                     return formatted_key
-        
+
         # If the specific element approach didn't work, fall back to the original text-based approach
         text = soup.get_text(" ", strip=True)
-        
+
         # Procura por padrões de chave de acesso (44 dígitos)
         # Procura por padrões com espaços ou sem espaços (ex: 3326 0210 6976 9700 0660 6510 7000 3680 6612 6649 4182 ou 33260210697697000660651070003680661266494182)
         patterns = [
-            r'Chave\s*de\s*Acesso[^\d]*([0-9\s]{40,50})',  # "Chave de Acesso" followed by digits/spaces
-            r'Chave\s*de\s*acesso[^\d]*([0-9\s]{40,50})',  # "Chave de acesso" followed by digits/spaces
-            r'([0-9\s]{40,50})',  # Just the 44 digits pattern (with possible spaces)
+            r"Chave\s*de\s*Acesso[^\d]*([0-9\s]{40,50})",  # "Chave de Acesso" followed by digits/spaces
+            r"Chave\s*de\s*acesso[^\d]*([0-9\s]{40,50})",  # "Chave de acesso" followed by digits/spaces
+            r"([0-9\s]{40,50})",  # Just the 44 digits pattern (with possible spaces)
         ]
-        
+
         for pattern in patterns:
             matches = re.findall(pattern, text, re.IGNORECASE)
             for match in matches:
                 # Clean up the matched string to keep only digits and remove extra spaces
-                clean_match = re.sub(r'\s+', '', match.strip())
+                clean_match = re.sub(r"\s+", "", match.strip())
                 if len(clean_match) == 44 and clean_match.isdigit():
                     # Format the key nicely with spaces every 4 digits
-                    formatted_key = ' '.join([clean_match[i:i+4] for i in range(0, len(clean_match), 4)])
+                    formatted_key = " ".join(
+                        [clean_match[i : i + 4] for i in range(0, len(clean_match), 4)]
+                    )
                     return formatted_key
-        
+
         # If no key found, generate a UUID-based key as fallback
         return f"SCRAPING-{uuid4().hex}"
 
@@ -193,70 +211,74 @@ class DefaultSefazAdapter(BaseSefazAdapter):
         # Procura por padrões de data e hora no HTML, como no exemplo:
         # "Emissão: 11/02/2026 07:35:22-03:00"
         import re
-        
+
         # Primeiro tenta encontrar a data de emissão específica na seção "Informações gerais da Nota"
         # Procurando por padrões específicos de emissão perto de texto relevante
         text = soup.get_text(" ", strip=True)
-        
+
         # Procura pela expressão específica "Emissão:" após termos como "Número:", "Série:", etc.
         # que indica a data de emissão da nota fiscal
-        emission_pattern = r'(?:Número:\s*\d+.*?Série:\s*\d+|Série:\s*\d+.*?Número:\s*\d+)?(?:\s*Emiss[aã]o\s*:\s*|\s*EMISS[AÃ]O\s+NORMAL[^<]*?<br[^>]*>.*?Emiss[aã]o\s*:\s*)(\d{2}/\d{2}/\d{4})'
+        emission_pattern = r"(?:Número:\s*\d+.*?Série:\s*\d+|Série:\s*\d+.*?Número:\s*\d+)?(?:\s*Emiss[aã]o\s*:\s*|\s*EMISS[AÃ]O\s+NORMAL[^<]*?<br[^>]*>.*?Emiss[aã]o\s*:\s*)(\d{2}/\d{2}/\d{4})"
         emission_matches = re.findall(emission_pattern, text, re.IGNORECASE | re.DOTALL)
         if emission_matches:
             for match in emission_matches:
                 try:
-                    day, month, year = map(int, match.split('/'))
+                    day, month, year = map(int, match.split("/"))
                     return date(year, month, day)
                 except ValueError:
                     continue
-        
+
         # Procura por padrões mais específicos na estrutura HTML conhecida
         # Busca dentro de listas ou elementos que contenham informações da nota
-        emission_elements = soup.find_all(string=re.compile(r'Emiss[aã]o:', re.IGNORECASE))
+        emission_elements = soup.find_all(
+            string=re.compile(r"Emiss[aã]o:", re.IGNORECASE)
+        )
         for element in emission_elements:
             # Procura pela data após "Emissão:"
             parent = element.parent if element.parent else None
             if parent:
                 # Obtém o texto do pai e procura por padrões de data
                 parent_text = parent.get_text(" ", strip=True)
-                date_match = re.search(r'Emiss[aã]o\s*:\s*(\d{2}/\d{2}/\d{4})', parent_text, re.IGNORECASE)
+                date_match = re.search(
+                    r"Emiss[aã]o\s*:\s*(\d{2}/\d{2}/\d{4})", parent_text, re.IGNORECASE
+                )
                 if date_match:
                     date_str = date_match.group(1)
                     try:
-                        day, month, year = map(int, date_str.split('/'))
+                        day, month, year = map(int, date_str.split("/"))
                         return date(year, month, day)
                     except ValueError:
                         continue
-        
+
         # Procura pelo padrão "Emissão: DD/MM/YYYY HH:MM:SS[timezone_offset]"
         # ou variações como "EMISSÃO: DD/MM/YYYY HH:MM:SS" etc.
         date_patterns = [
-            r'Emiss[aã]o\s*:\s*(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2}(?:[-+]\d{2}:?\d{2})?)',
-            r'Data\s+Emiss[aã]o\s*:\s*(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2}(?:[-+]\d{2}:?\d{2})?)',
-            r'(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2}(?:[-+]\d{2}:?\d{2})?)'
+            r"Emiss[aã]o\s*:\s*(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2}(?:[-+]\d{2}:?\d{2})?)",
+            r"Data\s+Emiss[aã]o\s*:\s*(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2}(?:[-+]\d{2}:?\d{2})?)",
+            r"(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2}(?:[-+]\d{2}:?\d{2})?)",
         ]
-        
+
         for pattern in date_patterns:
             matches = re.findall(pattern, text, re.IGNORECASE)
             for match in matches:
                 # Extrai somente a parte da data (DD/MM/YYYY) ignorando hora e timezone
                 date_part = match.split()[0]
                 try:
-                    day, month, year = map(int, date_part.split('/'))
+                    day, month, year = map(int, date_part.split("/"))
                     return date(year, month, day)
                 except ValueError:
                     continue
-        
+
         # Se não encontrar, tenta encontrar padrões de data isolados (DD/MM/YYYY)
-        simple_date_pattern = r'\b(\d{2}/\d{2}/\d{4})\b'
+        simple_date_pattern = r"\b(\d{2}/\d{2}/\d{4})\b"
         simple_matches = re.findall(simple_date_pattern, text)
         for match in simple_matches:
             try:
-                day, month, year = map(int, match.split('/'))
+                day, month, year = map(int, match.split("/"))
                 return date(year, month, day)
             except ValueError:
                 continue
-        
+
         # Se ainda não encontrar, usa data de hoje como fallback
         return date.today()
 
@@ -266,7 +288,7 @@ class DefaultSefazAdapter(BaseSefazAdapter):
         # Primeiro tenta encontrar a tabela específica de itens com ID "tabResult"
         # que é usada no layout SEFAZ-RJ conforme o HTML fornecido
         table = soup.find("table", {"id": "tabResult"})
-        
+
         if table:
             # Processa a tabela específica de itens
             rows = table.find_all("tr")
@@ -279,95 +301,134 @@ class DefaultSefazAdapter(BaseSefazAdapter):
                     if len(tds) >= 2:
                         # Primeira célula contém nome, código, quantidade, unidade e preço unitário
                         first_td = tds[0]
-                        
+
                         # Extrai o nome do produto (texto com classe "txtTit")
                         name_element = first_td.find("span", class_="txtTit")
                         if name_element:
                             name = name_element.get_text(strip=True)
-                            
+
                             # Log if the name is "NITEROI" to help debug the issue
                             if name.lower() == "niteroi":
-                                logger.warning(f"[fiscal-items] Item encontrado com nome 'NITEROI'. Conteúdo completo do first_td: {first_td}")
-                                logger.warning(f"[fiscal-items] Texto do elemento txtTit: {name}")
-                                
+                                logger.warning(
+                                    f"[fiscal-items] Item encontrado com nome 'NITEROI'. Conteúdo completo do first_td: {first_td}"
+                                )
+                                logger.warning(
+                                    f"[fiscal-items] Texto do elemento txtTit: {name}"
+                                )
+
                         else:
                             # Se não encontrar com span txtTit, tenta extrair o primeiro texto significativo
                             # que não seja parte dos spans com informações adicionais
-                            all_text = first_td.get_text(separator='|', strip=True)
+                            all_text = first_td.get_text(separator="|", strip=True)
                             # Divide pelo separador e pega a primeira parte que parece ser o nome do produto
-                            parts = all_text.split('|')
+                            parts = all_text.split("|")
                             # Filtra partes vazias e busca a que parece ser o nome do produto
                             for part in parts:
                                 part = part.strip()
                                 # Ignora partes que contêm códigos, quantidades ou preços
-                                if part and not any(keyword in part.lower() for keyword in ['código', 'qtde', 'un:', 'vl. unit', 'r$', 'valor']) and len(part) > 3:
+                                if (
+                                    part
+                                    and not any(
+                                        keyword in part.lower()
+                                        for keyword in [
+                                            "código",
+                                            "qtde",
+                                            "un:",
+                                            "vl. unit",
+                                            "r$",
+                                            "valor",
+                                        ]
+                                    )
+                                    and len(part) > 3
+                                ):
                                     # Certifique-se de que não é um texto irrelevante como "NITEROI"
                                     if part.lower() != "niteroi":
                                         name = part
                                         break
                             else:
                                 name = ""
-                                
+
                         # Se ainda assim o nome for "NITEROI", tenta obter de forma mais específica
                         if name.lower() == "niteroi" or not name:
                             # Tenta encontrar o nome do produto olhando apenas para os textos dentro do td
                             # excluindo explicitamente spans com outras informações
                             direct_children_texts = []
                             for child in first_td.children:
-                                if hasattr(child, 'name') and child.name not in ['span']:
+                                if hasattr(child, "name") and child.name not in [
+                                    "span"
+                                ]:
                                     # Child is a NavigableString, get its text
                                     if child is not None:
                                         # Get the text content of the child and strip it
                                         child_text = str(child).strip()
                                         if child_text:
                                             direct_children_texts.append(child_text)
-                                elif hasattr(child, 'name') and child.name == 'span':
+                                elif hasattr(child, "name") and child.name == "span":
                                     # Verifica se é um span com nome do produto (txtTit) ou outro tipo
-                                    if 'txtTit' in child.get('class', []) and child.get_text(strip=True).lower() != 'niteroi':
+                                    if (
+                                        "txtTit" in child.get("class", [])
+                                        and child.get_text(strip=True).lower()
+                                        != "niteroi"
+                                    ):
                                         name = child.get_text(strip=True)
                                         break
-                                    
+
                             if not name and direct_children_texts:
                                 # Usa o primeiro texto direto que não seja "NITEROI"
                                 for text in direct_children_texts:
-                                    if text.lower() != 'niteroi':
+                                    if text.lower() != "niteroi":
                                         name = text
                                         break
-                        
+
                         # Extrai quantidade e unidade dos spans
                         qty_text = "0"
                         unit_text = "UN"
-                        
+
                         qtd_span = first_td.find("span", class_="Rqtd")
                         if qtd_span:
                             qtd_str = qtd_span.get_text(strip=True)
                             # Extrai número após "Qtde.:" ou "Qtde:"
                             import re
-                            qty_match = re.search(r'Qtde\.?:?\s*([0-9,.]+)', qtd_str, re.IGNORECASE)
+
+                            qty_match = re.search(
+                                r"Qtde\.?:?\s*([0-9,.]+)", qtd_str, re.IGNORECASE
+                            )
                             if qty_match:
                                 qty_text = qty_match.group(1)
-                        
+
                         un_span = first_td.find("span", class_="RUN")
                         if un_span:
                             un_str = un_span.get_text(strip=True)
                             # Extrai unidade após "UN: "
-                            un_match = re.search(r'UN:\s*(\w+)', un_str, re.IGNORECASE)
+                            un_match = re.search(r"UN:\s*(\w+)", un_str, re.IGNORECASE)
                             if un_match:
                                 unit_text = un_match.group(1)
-                        
+
                         # Extrai preço unitário
                         unit_price_text = "0"
                         price_span = first_td.find("span", class_="RvlUnit")
                         if price_span:
                             price_str = price_span.get_text(strip=True)
                             # Extrai número após "Vl. Unit.:" ou similar
-                            price_match = re.search(r'Vl\.?\s*Unit\.?:?\s*([0-9,.]+)', price_str, re.IGNORECASE)
+                            price_match = re.search(
+                                r"Vl\.?\s*Unit\.?:?\s*([0-9,.]+)",
+                                price_str,
+                                re.IGNORECASE,
+                            )
                             if price_match:
                                 unit_price_text = price_match.group(1)
-                        
+
                         # Segunda célula contém o valor total
-                        total_cell = tds[1].find("span", class_="valor") if len(tds) > 1 else None
-                        total_price_text = total_cell.get_text(strip=True) if total_cell else unit_price_text
+                        total_cell = (
+                            tds[1].find("span", class_="valor")
+                            if len(tds) > 1
+                            else None
+                        )
+                        total_price_text = (
+                            total_cell.get_text(strip=True)
+                            if total_cell
+                            else unit_price_text
+                        )
 
                         def _to_float(value: str) -> float:
                             return float(value.replace(".", "").replace(",", "."))
@@ -385,7 +446,9 @@ class DefaultSefazAdapter(BaseSefazAdapter):
                         except ValueError:
                             total_price = unit_price * quantity
 
-                        if name and name.lower() != "niteroi":  # Filtra o item incorreto "NITERÓI"
+                        if (
+                            name and name.lower() != "niteroi"
+                        ):  # Filtra o item incorreto "NITERÓI"
                             items.append(
                                 ParsedItem(
                                     name=name,
@@ -411,18 +474,20 @@ class DefaultSefazAdapter(BaseSefazAdapter):
                     if len(cols) < 3:
                         continue
                     name = cols[0].get_text(strip=True)
-                    
+
                     # Adiciona filtro para evitar pegar o nome da cidade como item
                     if name.lower() == "niteroi":
                         continue
-                        
+
                     qty_text = cols[1].get_text(strip=True) or "0"
                     unit_text = cols[2].get_text(strip=True)
                     unit_price_text = (
                         cols[3].get_text(strip=True) if len(cols) > 3 else "0"
                     )
                     total_price_text = (
-                        cols[4].get_text(strip=True) if len(cols) > 4 else unit_price_text
+                        cols[4].get_text(strip=True)
+                        if len(cols) > 4
+                        else unit_price_text
                     )
 
                     def _to_float(value: str) -> float:
@@ -502,16 +567,16 @@ class RJSefazNFCeAdapter(BaseSefazAdapter):
         if seller_div:
             seller_name = seller_div.get_text(strip=True)
             logger.info(f"[fiscal-items] seller_name lido: {seller_name}")
-            
+
             # Procura pelo CNPJ que está na div seguinte
             cnpj_div = seller_div.find_next_sibling("div", class_="text")
             if cnpj_div:
                 cnpj_text = cnpj_div.get_text(strip=True)
                 if "CNPJ:" in cnpj_text.upper():
                     return f"{seller_name}; {cnpj_text}"
-            
+
             return seller_name
-        
+
         # Se não encontrar o formato específico, tenta métodos alternativos (como no RJ)
         # No layout recente, o nome do mercado fica num bloco grande no topo.
         # Estratégia: pegar o primeiro bloco em destaque após o logo.
@@ -532,22 +597,24 @@ class RJSefazNFCeAdapter(BaseSefazAdapter):
         # First, try to find the access key using specific HTML elements
         # Look for elements near "Chave de acesso" text
         import re
-        
+
         # Look for span elements with class 'chave' which often contain the access key
-        chave_spans = soup.find_all('span', class_='chave')
+        chave_spans = soup.find_all("span", class_="chave")
         if chave_spans:
             raw_key = chave_spans[0].get_text(strip=True)
             # Clean up the key (remove spaces, check if it's 44 digits)
-            clean_key = re.sub(r'\s+', '', raw_key)
+            clean_key = re.sub(r"\s+", "", raw_key)
             if len(clean_key) == 44 and clean_key.isdigit():
                 # Format the key nicely with spaces every 4 digits
-                formatted_key = ' '.join([clean_key[i:i+4] for i in range(0, len(clean_key), 4)])
+                formatted_key = " ".join(
+                    [clean_key[i : i + 4] for i in range(0, len(clean_key), 4)]
+                )
                 return formatted_key
-        
+
         # Also look for strong tags that might contain "Chave de acesso" followed by the key
-        strong_tags = soup.find_all('strong')
+        strong_tags = soup.find_all("strong")
         for tag in strong_tags:
-            if 'chave de acesso' in tag.get_text(strip=True).lower():
+            if "chave de acesso" in tag.get_text(strip=True).lower():
                 # Look for the next sibling that might contain the key
                 next_sibling = tag.next_sibling
                 while next_sibling and len(next_sibling.strip()) == 0:
@@ -556,49 +623,62 @@ class RJSefazNFCeAdapter(BaseSefazAdapter):
                     # Extract potential key from the text following the "Chave de acesso" tag
                     potential_key = next_sibling.strip()
                     # Clean up the key
-                    clean_key = re.sub(r'[^\d\s]', '', potential_key)  # Keep only digits and spaces
-                    clean_key = re.sub(r'\s+', '', clean_key)  # Remove all spaces temporarily
+                    clean_key = re.sub(
+                        r"[^\d\s]", "", potential_key
+                    )  # Keep only digits and spaces
+                    clean_key = re.sub(
+                        r"\s+", "", clean_key
+                    )  # Remove all spaces temporarily
                     if len(clean_key) == 44 and clean_key.isdigit():
                         # Format the key nicely with spaces every 4 digits
-                        formatted_key = ' '.join([clean_key[i:i+4] for i in range(0, len(clean_key), 4)])
+                        formatted_key = " ".join(
+                            [clean_key[i : i + 4] for i in range(0, len(clean_key), 4)]
+                        )
                         return formatted_key
-                
+
                 # Also check parent's siblings
                 parent = tag.parent
                 if parent:
                     # Look for spans or other elements within the parent that might contain the key
                     for child in parent.children:
-                        if child != tag and hasattr(child, 'get_text'):
+                        if child != tag and hasattr(child, "get_text"):
                             child_text = child.get_text(strip=True)
                             if child_text and len(child_text) >= 44:
                                 # Clean up the key
-                                clean_key = re.sub(r'\s+', '', child_text)
+                                clean_key = re.sub(r"\s+", "", child_text)
                                 if len(clean_key) == 44 and clean_key.isdigit():
                                     # Format the key nicely with spaces every 4 digits
-                                    formatted_key = ' '.join([clean_key[i:i+4] for i in range(0, len(clean_key), 4)])
+                                    formatted_key = " ".join(
+                                        [
+                                            clean_key[i : i + 4]
+                                            for i in range(0, len(clean_key), 4)
+                                        ]
+                                    )
                                     return formatted_key
-        
+
         # If the specific element approach didn't work, fall back to the original text-based approach
         text = soup.get_text(" ", strip=True)
-        
+
         # Procura por padrões de chave de acesso (44 dígitos)
         # Procura por padrões com espaços ou sem espaços (ex: 3326 0210 6976 9700 0660 6510 7000 3680 6612 6649 4182 ou 33260210697697000660651070003680661266494182)
         patterns = [
-            r'Chave\s*de\s*Acesso[^\d]*([0-9\s]{40,50})',  # "Chave de Acesso" followed by digits/spaces
-            r'Chave\s*de\s*acesso[^\d]*([0-9\s]{40,50})',  # "Chave de acesso" followed by digits/spaces
-            r'([0-9\s]{40,50})',  # Just the 44 digits pattern (with possible spaces)
+            r"Chave\s*de\s*Acesso[^\d]*([0-9\s]{40,50})",  # "Chave de Acesso" followed by digits/spaces
+            r"Chave\s*de\s*acesso[^\d]*([0-9\s]{40,50})",  # "Chave de acesso" followed by digits/spaces
+            r"([0-9\s]{40,50})",  # Just the 44 digits pattern (with possible spaces)
         ]
-        
+
         for pattern in patterns:
             matches = re.findall(pattern, text, re.IGNORECASE)
             for match in matches:
                 # Clean up the matched string to keep only digits and remove extra spaces
-                clean_match = re.sub(r'\s+', '', match.strip())
+                clean_match = re.sub(r"\s+", "", match.strip())
                 if len(clean_match) == 44 and clean_match.isdigit():
                     # Format the key nicely with spaces every 4 digits
-                    formatted_key = ' '.join([clean_match[i:i+4] for i in range(0, len(clean_match), 4)])
+                    formatted_key = " ".join(
+                        [clean_match[i : i + 4] for i in range(0, len(clean_match), 4)]
+                    )
                     return formatted_key
-        
+
         # If no key found, generate a UUID-based key as fallback
         return f"SCRAPING-RJ-{uuid4().hex}"
 
@@ -620,70 +700,74 @@ class RJSefazNFCeAdapter(BaseSefazAdapter):
         # Procura por padrões de data e hora no HTML, como no exemplo:
         # "Emissão: 11/02/2026 07:35:22-03:00"
         import re
-        
+
         # Primeiro tenta encontrar a data de emissão específica na seção "Informações gerais da Nota"
         # Procurando por padrões específicos de emissão perto de texto relevante
         text = soup.get_text(" ", strip=True)
-        
+
         # Procura pela expressão específica "Emissão:" após termos como "Número:", "Série:", etc.
         # que indica a data de emissão da nota fiscal
-        emission_pattern = r'(?:Número:\s*\d+.*?Série:\s*\d+|Série:\s*\d+.*?Número:\s*\d+)?(?:\s*Emiss[aã]o\s*:\s*|\s*EMISS[AÃ]O\s+NORMAL[^<]*?<br[^>]*>.*?Emiss[aã]o\s*:\s*)(\d{2}/\d{2}/\d{4})'
+        emission_pattern = r"(?:Número:\s*\d+.*?Série:\s*\d+|Série:\s*\d+.*?Número:\s*\d+)?(?:\s*Emiss[aã]o\s*:\s*|\s*EMISS[AÃ]O\s+NORMAL[^<]*?<br[^>]*>.*?Emiss[aã]o\s*:\s*)(\d{2}/\d{2}/\d{4})"
         emission_matches = re.findall(emission_pattern, text, re.IGNORECASE | re.DOTALL)
         if emission_matches:
             for match in emission_matches:
                 try:
-                    day, month, year = map(int, match.split('/'))
+                    day, month, year = map(int, match.split("/"))
                     return date(year, month, day)
                 except ValueError:
                     continue
-        
+
         # Procura por padrões mais específicos na estrutura HTML conhecida
         # Busca dentro de listas ou elementos que contenham informações da nota
-        emission_elements = soup.find_all(string=re.compile(r'Emiss[aã]o:', re.IGNORECASE))
+        emission_elements = soup.find_all(
+            string=re.compile(r"Emiss[aã]o:", re.IGNORECASE)
+        )
         for element in emission_elements:
             # Procura pela data após "Emissão:"
             parent = element.parent if element.parent else None
             if parent:
                 # Obtém o texto do pai e procura por padrões de data
                 parent_text = parent.get_text(" ", strip=True)
-                date_match = re.search(r'Emiss[aã]o\s*:\s*(\d{2}/\d{2}/\d{4})', parent_text, re.IGNORECASE)
+                date_match = re.search(
+                    r"Emiss[aã]o\s*:\s*(\d{2}/\d{2}/\d{4})", parent_text, re.IGNORECASE
+                )
                 if date_match:
                     date_str = date_match.group(1)
                     try:
-                        day, month, year = map(int, date_str.split('/'))
+                        day, month, year = map(int, date_str.split("/"))
                         return date(year, month, day)
                     except ValueError:
                         continue
-        
+
         # Procura pelo padrão "Emissão: DD/MM/YYYY HH:MM:SS[timezone_offset]"
         # ou variações como "EMISSÃO: DD/MM/YYYY HH:MM:SS" etc.
         date_patterns = [
-            r'Emiss[aã]o\s*:\s*(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2}(?:[-+]\d{2}:?\d{2})?)',
-            r'Data\s+Emiss[aã]o\s*:\s*(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2}(?:[-+]\d{2}:?\d{2})?)',
-            r'(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2}(?:[-+]\d{2}:?\d{2})?)'
+            r"Emiss[aã]o\s*:\s*(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2}(?:[-+]\d{2}:?\d{2})?)",
+            r"Data\s+Emiss[aã]o\s*:\s*(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2}(?:[-+]\d{2}:?\d{2})?)",
+            r"(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}:\d{2}(?:[-+]\d{2}:?\d{2})?)",
         ]
-        
+
         for pattern in date_patterns:
             matches = re.findall(pattern, text, re.IGNORECASE)
             for match in matches:
                 # Extrai somente a parte da data (DD/MM/YYYY) ignorando hora e timezone
                 date_part = match.split()[0]
                 try:
-                    day, month, year = map(int, date_part.split('/'))
+                    day, month, year = map(int, date_part.split("/"))
                     return date(year, month, day)
                 except ValueError:
                     continue
-        
+
         # Se não encontrar, tenta encontrar padrões de data isolados (DD/MM/YYYY)
-        simple_date_pattern = r'\b(\d{2}/\d{2}/\d{4})\b'
+        simple_date_pattern = r"\b(\d{2}/\d{2}/\d{4})\b"
         simple_matches = re.findall(simple_date_pattern, text)
         for match in simple_matches:
             try:
-                day, month, year = map(int, match.split('/'))
+                day, month, year = map(int, match.split("/"))
                 return date(year, month, day)
             except ValueError:
                 continue
-        
+
         # Se ainda não encontrar, usa data de hoje como fallback
         return date.today()
 
@@ -693,7 +777,7 @@ class RJSefazNFCeAdapter(BaseSefazAdapter):
         # Primeiro tenta encontrar a tabela específica de itens com ID "tabResult"
         # que é usada no layout SEFAZ-RJ conforme o HTML fornecido
         table = soup.find("table", {"id": "tabResult"})
-        
+
         if table:
             # Processa a tabela específica de itens
             rows = table.find_all("tr")
@@ -706,95 +790,134 @@ class RJSefazNFCeAdapter(BaseSefazAdapter):
                     if len(tds) >= 2:
                         # Primeira célula contém nome, código, quantidade, unidade e preço unitário
                         first_td = tds[0]
-                        
+
                         # Extrai o nome do produto (texto com classe "txtTit")
                         name_element = first_td.find("span", class_="txtTit")
                         if name_element:
                             name = name_element.get_text(strip=True)
-                            
+
                             # Log if the name is "NITEROI" to help debug the issue
                             if name.lower() == "niteroi":
-                                logger.warning(f"[fiscal-items] Item encontrado com nome 'NITEROI'. Conteúdo completo do first_td: {first_td}")
-                                logger.warning(f"[fiscal-items] Texto do elemento txtTit: {name}")
-                                
+                                logger.warning(
+                                    f"[fiscal-items] Item encontrado com nome 'NITEROI'. Conteúdo completo do first_td: {first_td}"
+                                )
+                                logger.warning(
+                                    f"[fiscal-items] Texto do elemento txtTit: {name}"
+                                )
+
                         else:
                             # Se não encontrar com span txtTit, tenta extrair o primeiro texto significativo
                             # que não seja parte dos spans com informações adicionais
-                            all_text = first_td.get_text(separator='|', strip=True)
+                            all_text = first_td.get_text(separator="|", strip=True)
                             # Divide pelo separador e pega a primeira parte que parece ser o nome do produto
-                            parts = all_text.split('|')
+                            parts = all_text.split("|")
                             # Filtra partes vazias e busca a que parece ser o nome do produto
                             for part in parts:
                                 part = part.strip()
                                 # Ignora partes que contêm códigos, quantidades ou preços
-                                if part and not any(keyword in part.lower() for keyword in ['código', 'qtde', 'un:', 'vl. unit', 'r$', 'valor']) and len(part) > 3:
+                                if (
+                                    part
+                                    and not any(
+                                        keyword in part.lower()
+                                        for keyword in [
+                                            "código",
+                                            "qtde",
+                                            "un:",
+                                            "vl. unit",
+                                            "r$",
+                                            "valor",
+                                        ]
+                                    )
+                                    and len(part) > 3
+                                ):
                                     # Certifique-se de que não é um texto irrelevante como "NITEROI"
                                     if part.lower() != "niteroi":
                                         name = part
                                         break
                             else:
                                 name = ""
-                                
+
                         # Se ainda assim o nome for "NITEROI", tenta obter de forma mais específica
                         if name.lower() == "niteroi" or not name:
                             # Tenta encontrar o nome do produto olhando apenas para os textos dentro do td
                             # excluindo explicitamente spans com outras informações
                             direct_children_texts = []
                             for child in first_td.children:
-                                if hasattr(child, 'name') and child.name not in ['span']:
+                                if hasattr(child, "name") and child.name not in [
+                                    "span"
+                                ]:
                                     # Child is a NavigableString, get its text
                                     if child is not None:
                                         # Get the text content of the child and strip it
                                         child_text = str(child).strip()
                                         if child_text:
                                             direct_children_texts.append(child_text)
-                                elif hasattr(child, 'name') and child.name == 'span':
+                                elif hasattr(child, "name") and child.name == "span":
                                     # Verifica se é um span com nome do produto (txtTit) ou outro tipo
-                                    if 'txtTit' in child.get('class', []) and child.get_text(strip=True).lower() != 'niteroi':
+                                    if (
+                                        "txtTit" in child.get("class", [])
+                                        and child.get_text(strip=True).lower()
+                                        != "niteroi"
+                                    ):
                                         name = child.get_text(strip=True)
                                         break
-                                    
+
                             if not name and direct_children_texts:
                                 # Usa o primeiro texto direto que não seja "NITEROI"
                                 for text in direct_children_texts:
-                                    if text.lower() != 'niteroi':
+                                    if text.lower() != "niteroi":
                                         name = text
                                         break
-                        
+
                         # Extrai quantidade e unidade dos spans
                         qty_text = "0"
                         unit_text = "UN"
-                        
+
                         qtd_span = first_td.find("span", class_="Rqtd")
                         if qtd_span:
                             qtd_str = qtd_span.get_text(strip=True)
                             # Extrai número após "Qtde.:" ou "Qtde:"
                             import re
-                            qty_match = re.search(r'Qtde\.?:?\s*([0-9,.]+)', qtd_str, re.IGNORECASE)
+
+                            qty_match = re.search(
+                                r"Qtde\.?:?\s*([0-9,.]+)", qtd_str, re.IGNORECASE
+                            )
                             if qty_match:
                                 qty_text = qty_match.group(1)
-                        
+
                         un_span = first_td.find("span", class_="RUN")
                         if un_span:
                             un_str = un_span.get_text(strip=True)
                             # Extrai unidade após "UN: "
-                            un_match = re.search(r'UN:\s*(\w+)', un_str, re.IGNORECASE)
+                            un_match = re.search(r"UN:\s*(\w+)", un_str, re.IGNORECASE)
                             if un_match:
                                 unit_text = un_match.group(1)
-                        
+
                         # Extrai preço unitário
                         unit_price_text = "0"
                         price_span = first_td.find("span", class_="RvlUnit")
                         if price_span:
                             price_str = price_span.get_text(strip=True)
                             # Extrai número após "Vl. Unit.:" ou similar
-                            price_match = re.search(r'Vl\.?\s*Unit\.?:?\s*([0-9,.]+)', price_str, re.IGNORECASE)
+                            price_match = re.search(
+                                r"Vl\.?\s*Unit\.?:?\s*([0-9,.]+)",
+                                price_str,
+                                re.IGNORECASE,
+                            )
                             if price_match:
                                 unit_price_text = price_match.group(1)
-                        
+
                         # Segunda célula contém o valor total
-                        total_cell = tds[1].find("span", class_="valor") if len(tds) > 1 else None
-                        total_price_text = total_cell.get_text(strip=True) if total_cell else unit_price_text
+                        total_cell = (
+                            tds[1].find("span", class_="valor")
+                            if len(tds) > 1
+                            else None
+                        )
+                        total_price_text = (
+                            total_cell.get_text(strip=True)
+                            if total_cell
+                            else unit_price_text
+                        )
 
                         def _to_float(value: str) -> float:
                             return float(value.replace(".", "").replace(",", "."))
@@ -812,7 +935,9 @@ class RJSefazNFCeAdapter(BaseSefazAdapter):
                         except ValueError:
                             total_price = unit_price * quantity
 
-                        if name and name.lower() != "niteroi":  # Filtra o item incorreto "NITERÓI"
+                        if (
+                            name and name.lower() != "niteroi"
+                        ):  # Filtra o item incorreto "NITERÓI"
                             items.append(
                                 ParsedItem(
                                     name=name,
@@ -838,18 +963,20 @@ class RJSefazNFCeAdapter(BaseSefazAdapter):
                     if len(cols) < 3:
                         continue
                     name = cols[0].get_text(strip=True)
-                    
+
                     # Adiciona filtro para evitar pegar o nome da cidade como item
                     if name.lower() == "niteroi":
                         continue
-                        
+
                     qty_text = cols[1].get_text(strip=True) or "0"
                     unit_text = cols[2].get_text(strip=True)
                     unit_price_text = (
                         cols[3].get_text(strip=True) if len(cols) > 3 else "0"
                     )
                     total_price_text = (
-                        cols[4].get_text(strip=True) if len(cols) > 4 else unit_price_text
+                        cols[4].get_text(strip=True)
+                        if len(cols) > 4
+                        else unit_price_text
                     )
 
                     def _to_float(value: str) -> float:
@@ -893,7 +1020,9 @@ class RJSefazNFCeAdapter(BaseSefazAdapter):
 class ScraperImporter:
     """Fachada para importação de NFC-e via URL com arquitetura de adapters."""
 
-    def __init__(self, backup_file_path: str = "../data/processed_urls_backup.json") -> None:
+    def __init__(
+        self, backup_file_path: str = "../data/processed_urls_backup.json"
+    ) -> None:
         # Registro de adapters por "chave" (por exemplo, UF, domínio, etc.).
         # Por enquanto, usamos apenas um adapter padrão.
         self._adapters: Dict[str, Type[BaseSefazAdapter]] = {
@@ -913,7 +1042,7 @@ class ScraperImporter:
         """Load processed URLs from backup file."""
         try:
             if os.path.exists(self.backup_file_path):
-                with open(self.backup_file_path, 'r', encoding='utf-8') as f:
+                with open(self.backup_file_path, "r", encoding="utf-8") as f:
                     self._processed_urls = set(json.load(f))
             else:
                 self._processed_urls = set()
@@ -925,11 +1054,65 @@ class ScraperImporter:
         """Save a processed URL to the backup file."""
         self._processed_urls.add(url)
         try:
-            with open(self.backup_file_path, 'w', encoding='utf-8') as f:
+            with open(self.backup_file_path, "w", encoding="utf-8") as f:
                 json.dump(list(self._processed_urls), f, ensure_ascii=False, indent=2)
         except Exception:
             # If we can't save to backup, just continue processing
             pass
+
+    def _convert_qrcode_url(self, url: str) -> str:
+        """Converte URLs de QR code (curtas) para o formato completo.
+
+        URLs de QR code têm o formato: ?p=CHAVE|TIPO|VERSAO
+        Exemplo: ?p=33260261585865384979650010000071341104759059|3|1
+
+        O sistema precisa do formato completo: ?p=CHAVE|2|1|1|ASSINATURA
+        """
+        # Verifica se é URL do RJ
+        if "fazenda.rj.gov.br" not in url:
+            return url
+
+        # Extrai o parâmetro 'p'
+        if "QRCode?p=" not in url:
+            return url
+
+        try:
+            from urllib.parse import urlparse, parse_qs, urlencode
+
+            parsed = urlparse(url)
+            params = parse_qs(parsed.query)
+
+            if "p" not in params:
+                return url
+
+            param_p = params["p"][0]
+            parts = param_p.split("|")
+
+            # Se já tem 5+ campos, já está no formato completo
+            if len(parts) >= 5:
+                return url
+
+            # Extrai a chave (primeiro campo - 44 dígitos)
+            access_key = parts[0]
+
+            if len(access_key) != 44:
+                logger.warning(f"[QRCode] Chave inválida: {access_key}")
+                return url
+
+            # Monta URL no formato completo com assinatura fixa
+            # Padrão: CHAVE|2|1|1|ASSINATURA
+            signature = "111BAB453B94694F3E8BA0AFE5742229BDBCA316"
+            new_param = f"{access_key}|2|1|1|{signature}"
+
+            new_params = {"p": new_param}
+            new_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{urlencode(new_params, safe='|')}"
+
+            logger.info(f"[QRCode] URL convertida: {url} -> {new_url}")
+            return new_url
+
+        except Exception as e:
+            logger.warning(f"[QRCode] Erro ao converter URL: {e}")
+            return url
 
     def _select_adapter_key(self, url: str) -> str:
         """Retorna a chave do adapter apropriado para a URL."""
@@ -948,6 +1131,9 @@ class ScraperImporter:
         force_browser: bool = False,
     ) -> ParsedNote:
         """Faz o download da página da NFC-e e retorna uma `ParsedNote`."""
+
+        # Converte URLs de QR code para formato completo
+        url = self._convert_qrcode_url(url)
 
         # Modo "auto": tenta requests primeiro (quando não for forçado browser).
         # Se detectar bloqueio/parse inválido, recorre ao browser real (Playwright).
@@ -993,4 +1179,3 @@ __all__ = [
     "DefaultSefazAdapter",
     "RJSefazNFCeAdapter",
 ]
-

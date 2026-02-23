@@ -1,11 +1,12 @@
 import axios from 'axios';
 
-// Create an Axios instance with base configuration
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+  baseURL: API_URL,
+  timeout: 30000,
 });
 
-// Define TypeScript interfaces
 export interface FiscalNoteResponse {
   note_id: string;
   items_count: number;
@@ -18,11 +19,6 @@ export interface ImportPayload {
   use_browser: boolean;
 }
 
-/**
- * Imports a fiscal note from a given URL
- * @param url The URL of the fiscal note to import
- * @returns Promise<FiscalNoteResponse> The imported fiscal note data
- */
 export const importNoteFromUrl = async (url: string): Promise<FiscalNoteResponse> => {
   try {
     const payload: ImportPayload = {
@@ -30,39 +26,48 @@ export const importNoteFromUrl = async (url: string): Promise<FiscalNoteResponse
       use_browser: false,
     };
 
+    const fullUrl = `${API_URL}/import/url`;
+    console.log('[API] POST to:', fullUrl);
+    console.log('[API] Payload:', payload);
+
     const response = await api.post<FiscalNoteResponse>('/import/url', payload);
+    console.log('[API] Response:', response.data);
     return response.data;
   } catch (error) {
-    // Handle different types of errors and return user-friendly messages
+    console.error('[API] Error:', error);
+    
     if (axios.isAxiosError(error)) {
+      console.error('[API] Axios Error - code:', error.code);
+      console.error('[API] Axios Error - message:', error.message);
+      console.error('[API] Axios Error - response:', error.response);
+      console.error('[API] Axios Error - request:', error.request);
+      
       if (error.response) {
-        // Server responded with error status
         switch (error.response.status) {
           case 409:
             throw new Error('Nota fiscal já importada anteriormente.');
           case 422:
-            throw new Error('URL inválida ou não suportada. Por favor, verifique a URL e tente novamente.');
+            throw new Error('URL inválida ou não suportada.');
           case 400:
-            throw new Error('Requisição inválida. Verifique os parâmetros enviados.');
+            throw new Error('Requisição inválida.');
           case 404:
-            throw new Error('Endpoint não encontrado. Verifique se o servidor está funcionando corretamente.');
+            throw new Error('Endpoint não encontrado.');
           case 500:
-            throw new Error('Erro interno do servidor. Ocorreu um problema ao processar sua solicitação.');
+            throw new Error('Erro interno do servidor.');
           case 504:
-            throw new Error('Tempo limite excedido. O sistema demorou muito para processar a requisição.');
+            throw new Error('Tempo limite excedido.');
           default:
-            throw new Error(`Erro na requisição: ${error.response.status} - ${error.response.statusText}`);
+            throw new Error(`Erro: ${error.response.status} - ${error.response.statusText}`);
         }
       } else if (error.request) {
-        // Request was made but no response received
-        throw new Error('Falha na conexão com o servidor. Verifique sua conexão de internet e tente novamente.');
+        const errorMsg = `Falha na conexão com ${API_URL}. Código: ${error.code}. Verifique a rede.`;
+        console.error('[API]', errorMsg);
+        throw new Error(errorMsg);
       } else {
-        // Something else happened while setting up the request
-        throw new Error('Ocorreu um erro inesperado ao configurar a requisição.');
+        throw new Error('Erro ao configurar requisição: ' + error.message);
       }
     } else {
-      // Non-Axios error
-      throw new Error('Ocorreu um erro inesperado durante a operação.');
+      throw new Error('Erro inesperado: ' + (error instanceof Error ? error.message : String(error)));
     }
   }
 };
