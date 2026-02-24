@@ -190,10 +190,16 @@ Sistema de gestão financeira pessoal com controle de:
 - **Backend**: Python 3.10+, FastAPI, SQLAlchemy, SQLite
 - **Frontend Web**: Streamlit (não há React/TypeScript ainda)
 - **Mobile**: React + Capacitor (Android APK)
-- **Testes**: pytest (66 testes, 70% cobertura mínima)
+- **Testes**: pytest (83 testes, 70% cobertura mínima)
 - **Linter**: Ruff
-- **Scraping**: Playwright, BeautifulSoup4
-- **Infra**: Docker (opcional)
+- **Scraping**: Requests, BeautifulSoup4 (Playwright apenas local)
+- **Infra**: Docker (VPS)
+
+### Modelo de Dados - Seller Normalizado
+- **Seller**: Entidade com id, name, tax_id (CNPJ único/indexado), address
+- **FiscalNote**: Referencia Seller via FK (seller_id)
+- **ProductMapping**: Referencia Seller via FK (seller_id)
+- **Auto-cadastro**: Ao importar nota, Seller é criado automaticamente pelo CNPJ se não existir
 
 ### Convenções do Projeto
 - Commits em português
@@ -296,12 +302,20 @@ VITE_API_URL=https://xxx.trycloudflare.com
 #### PROD (VPS)
 
 ```bash
-# Usar docker-compose (configura automaticamente)
-docker-compose up -d
+# Na VPS, instalar cloudflared primeiro
+curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared
+chmod +x /usr/local/bin/cloudflared
 
-# Para IP externo, criar .env com:
-# API_BASE_URL=http://<IP-DA-VPS>:8000
-# BACKEND_URL=http://<IP-DA-VPS>:8000
+# Criar tunnel (não requer login para tunnel temporário)
+nohup cloudflared tunnel --url http://localhost:8000 > /tmp/cloudflared.log 2>&1 &
+
+# Para deploy com docker:
+docker run -d --name erp-backend -p 8000:8000 \
+  -v /opt/erp-pessoal-v2/data:/app/data \
+  -v /opt/erp-pessoal-v2/backend/app:/app/app \
+  -w /app \
+  -e DATABASE_URL=sqlite:///data/app.db \
+  erp-pessoal-v2-backend uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 #### Arquivos de Configuração
@@ -393,7 +407,26 @@ test(api): adiciona teste de integração
 - **Mobile .env**: Após alterar .env, sempre fazer rebuild (`npm run build && npx cap sync android && ./gradlew assembleDebug`)
 - **Testes com mocks**: Evitar `reload_database_modules` com `xml_handler` e `scraper_handler` - pode quebrar mocks de outros testes (usar dependência explícita ou fixture isolada)
 - **ITEMS_TABLE em testes**: Sempre incluir colunas `Vl. Unit.` e `Vl. Total` no HTML mockado para parsing correto dos itens
+- **Deploy Docker VPS**: Usar volumes montados corretamente (`-v /opt/erp-pessoal-v2/data:/app/data -v /opt/erp-pessoal-v2/backend/app:/app/app -w /app`) com variáveis de ambiente (`-e DATABASE_URL=sqlite:///data/app.db`)
 
 ---
 
-**Última atualização**: 2026-02-23
+## Limitações Técnicas Conhecidas
+
+### Scraping SEFAZ
+- **Bloqueio de IP**: A SEFAZ bloqueia IPs que fazem muitas requisições
+- **VPN não funciona**: IPs de VPN conhecida são bloqueados
+- **Solução atual**: Usar app mobile para capturar URL + backend VPS para scraping (IP diferente)
+
+### Deploy VPS
+- **Playwright não funciona**: Docker em VPS não tem X server/xvfb
+- **Browser fetcher**: Implementado com requests apenas (sem JavaScript renderizado)
+- **Tunnel Cloudflare**: Precisa ser recriado manualmente após reinicialização
+
+### Mobile
+- **Scanner QR**: html5-qrcode tem limitações no Android WebView
+- **Solução alternativa**: Usar app externo de QR Code e colar URL manualmente
+
+---
+
+**Última atualização**: 2026-02-24

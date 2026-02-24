@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, computed_field
 
 
 class CategoryOut(BaseModel):
@@ -29,12 +29,33 @@ class FiscalItemOut(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    @field_validator('product_ean', mode='before')
+    @field_validator("product_ean", mode="before")
     @classmethod
     def convert_product_ean_to_string(cls, v):
         if v is not None:
             return str(v)
         return v
+
+
+class SellerOut(BaseModel):
+    """Schema de saída para vendedores."""
+
+    id: int
+    name: str
+    tax_id: str
+    address: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SellerCreate(BaseModel):
+    """Schema de entrada para criação de vendedores."""
+
+    name: str
+    tax_id: str
+    address: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class FiscalNoteOut(BaseModel):
@@ -43,12 +64,19 @@ class FiscalNoteOut(BaseModel):
     id: int
     date: date
     total_amount: float
-    seller_name: str
+    seller_id: int
+    seller: Optional[SellerOut] = None
     access_key: str
     source_type: str
     items: List[FiscalItemOut]
 
     model_config = ConfigDict(from_attributes=True)
+
+    @computed_field
+    @property
+    def seller_name(self) -> str:
+        """Retorna o nome do vendedor para compatibilidade."""
+        return self.seller.name if self.seller else ""
 
 
 class TransactionCreate(BaseModel):
@@ -79,7 +107,7 @@ class ProductMappingCreate(BaseModel):
     """Schema de entrada para criação de mapeamentos de produtos."""
 
     raw_description: str
-    seller_name: str
+    seller_id: int
     product_ean: int
 
     model_config = ConfigDict(from_attributes=True)
@@ -99,9 +127,10 @@ __all__ = [
     "CategoryOut",
     "FiscalItemOut",
     "FiscalNoteOut",
+    "SellerOut",
+    "SellerCreate",
     "TransactionCreate",
     "TransactionOut",
     "ProductMappingCreate",
     "ProductMasterCreate",
 ]
-

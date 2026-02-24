@@ -87,6 +87,30 @@ class BankTransaction(Base):
     )
 
 
+class Seller(Base):
+    """Vendedor/estabelecimento emissor de nota fiscal.
+
+    Attributes:
+        id: Identificador único do vendedor.
+        name: Nome normalizado do estabelecimento.
+        tax_id: CNPJ do estabelecimento (indexado e único).
+        address: Endereço do estabelecimento (opcional).
+    """
+
+    __tablename__ = "sellers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    tax_id: Mapped[str] = mapped_column(
+        String(20), nullable=False, unique=True, index=True
+    )
+    address: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    fiscal_notes: Mapped[List["FiscalNote"]] = relationship(
+        "FiscalNote", back_populates="seller"
+    )
+
+
 class FiscalNote(Base):
     """Nota fiscal consolidada.
 
@@ -94,7 +118,8 @@ class FiscalNote(Base):
         id: Identificador único da nota.
         date: Data da emissão.
         total_amount: Valor total da nota.
-        seller_name: Nome do emissor/vendedor.
+        seller_id: Chave estrangeira para o vendedor.
+        seller: Relação ORM com o vendedor.
         access_key: Chave de acesso única.
         source_type: Origem da nota (XML ou Scraping).
         items: Relação ORM com itens da nota.
@@ -105,12 +130,15 @@ class FiscalNote(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     date: Mapped[date] = mapped_column(Date, nullable=False)
     total_amount: Mapped[float] = mapped_column(Float, nullable=False)
-    seller_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    seller_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("sellers.id"), nullable=False
+    )
     access_key: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     source_type: Mapped[FiscalSourceType] = mapped_column(
         SAEnum(FiscalSourceType), nullable=False
     )
 
+    seller: Mapped[Seller] = relationship("Seller", back_populates="fiscal_notes")
     items: Mapped[List["FiscalItem"]] = relationship(
         "FiscalItem", back_populates="note", cascade="all, delete-orphan"
     )
@@ -142,7 +170,7 @@ class ProductMapping(Base):
     Attributes:
         id: Identificador único do mapeamento.
         raw_description: Descrição original do produto na nota fiscal.
-        seller_name: Nome do vendedor/mercado.
+        seller_id: Chave estrangeira para o vendedor.
         product_ean: Chave estrangeira para o produto master.
     """
 
@@ -150,12 +178,15 @@ class ProductMapping(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     raw_description: Mapped[str] = mapped_column(String(255), nullable=False)
-    seller_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    seller_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("sellers.id"), nullable=False
+    )
     product_ean: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("products_master.ean"), nullable=False
     )
 
     product: Mapped[ProductMaster] = relationship("ProductMaster")
+    seller: Mapped[Seller] = relationship("Seller")
 
 
 class FiscalItem(Base):
@@ -200,4 +231,3 @@ class FiscalItem(Base):
         CheckConstraint("unit_price >= 0", name="ck_fiscal_items_unit_price_non_neg"),
         CheckConstraint("total_price >= 0", name="ck_fiscal_items_total_price_non_neg"),
     )
-

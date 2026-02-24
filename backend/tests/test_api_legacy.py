@@ -15,6 +15,7 @@ from backend.app.models import (
     FiscalNote,
     Category,
     FiscalSourceType,
+    Seller,
 )
 from datetime import date
 from fastapi import FastAPI
@@ -191,11 +192,20 @@ def test_fiscal_items_orphans_returns_correct_list(client, db_session) -> None:
         db_session.commit()
         db_session.refresh(category)
 
+        # Create a seller
+        seller = Seller(
+            name="Supermercado Exemplo",
+            tax_id="12345678000190",
+        )
+        db_session.add(seller)
+        db_session.commit()
+        db_session.refresh(seller)
+
         # Create a fiscal note
         note = FiscalNote(
             date=date(2025, 1, 1),
             total_amount=100.0,
-            seller_name="Supermercado Exemplo",
+            seller_id=seller.id,
             access_key="ABC123",
             source_type=FiscalSourceType.XML,
         )
@@ -301,10 +311,17 @@ def test_product_mapping_creation(client) -> None:
             print(f"EAN registration error: {response.text}")
         assert response.status_code == 200
 
+        # First create a seller
+        seller_response = client.post(
+            "/sellers", json={"name": "Any Seller", "tax_id": "98765432000190"}
+        )
+        assert seller_response.status_code == 201
+        seller_data = seller_response.json()
+
         # Then try to map the description to the EAN
         mapping_data = {
             "raw_description": "BANANA PRATA",
-            "seller_name": "Any Seller",
+            "seller_id": seller_data["id"],
             "product_ean": 5678901234567,
         }
 

@@ -22,11 +22,14 @@ from .models import (
     FiscalSourceType,
     ProductMapping,
     ProductMaster,
+    Seller,
 )
 from .schemas import (
     CategoryOut,
     FiscalItemOut,
     FiscalNoteOut,
+    SellerOut,
+    SellerCreate,
     TransactionCreate,
     TransactionOut,
     ProductMappingCreate,
@@ -125,6 +128,43 @@ app.add_middleware(
 def health_check():
     """Health check endpoint to verify API availability."""
     return {"status": "ok", "message": "Backend is running"}
+
+
+@app.get("/sellers", response_model=List[SellerOut])
+def list_sellers(db: Session = Depends(get_db)) -> List[SellerOut]:
+    """Retorna todos os vendedores cadastrados."""
+
+    result = db.execute(select(Seller).order_by(Seller.name))
+    sellers: List[Seller] = list(result.scalars().all())
+    return [SellerOut.model_validate(seller) for seller in sellers]
+
+
+@app.post("/sellers", response_model=SellerOut, status_code=status.HTTP_201_CREATED)
+def create_seller(
+    payload: SellerCreate,
+    db: Session = Depends(get_db),
+) -> SellerOut:
+    """Cria um novo vendedor."""
+
+    existing = db.execute(
+        select(Seller).where(Seller.tax_id == payload.tax_id)
+    ).scalar_one_or_none()
+
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Vendedor com CNPJ {payload.tax_id} já existe.",
+        )
+
+    seller = Seller(
+        name=payload.name,
+        tax_id=payload.tax_id,
+        address=payload.address,
+    )
+    db.add(seller)
+    db.commit()
+    db.refresh(seller)
+    return SellerOut.model_validate(seller)
 
 
 @app.get("/categories", response_model=List[CategoryOut])
@@ -229,10 +269,24 @@ def _persist_parsed_note(
 ) -> FiscalNote:
     """Persiste uma nota e seus itens a partir de um ParsedNote."""
 
+    seller = db.execute(
+        select(Seller).where(Seller.tax_id == parsed.seller_tax_id)
+    ).scalar_one_or_none()
+
+    if seller is None:
+        seller = Seller(
+            name=parsed.seller_name,
+            tax_id=parsed.seller_tax_id,
+            address=parsed.seller_address,
+        )
+        db.add(seller)
+        db.flush()
+        logger.info(f"Novo vendedor criado: {seller.name} (CNPJ: {seller.tax_id})")
+
     note = FiscalNote(
         date=parsed.date,
         total_amount=parsed.total_amount,
-        seller_name=parsed.seller_name,
+        seller_id=seller.id,
         access_key=parsed.access_key,
         source_type=source_type,
     )
@@ -248,26 +302,24 @@ def _persist_parsed_note(
         ) from exc
 
     for item in parsed.items:
-        # Verifica se já existe um mapeamento para este produto
         product_mapping = db.execute(
             select(ProductMapping).where(
                 (ProductMapping.raw_description == item.name)
-                & (ProductMapping.seller_name == parsed.seller_name)
+                & (ProductMapping.seller_id == seller.id)
             )
         ).scalar_one_or_none()
 
-        # Prioritizes EAN from XML, falls back to product mapping if XML EAN is not available
         product_ean = item.ean
         if product_ean is None and product_mapping:
             product_ean = product_mapping.product_ean
             logger.info(
-                f"Vínculo automático encontrado para '{item.name}' no vendedor '{parsed.seller_name}': EAN {product_ean}"
+                f"Vínculo automático encontrado para '{item.name}' no vendedor '{seller.name}': EAN {product_ean}"
             )
         elif product_ean:
             logger.info(f"EAN encontrado no XML para '{item.name}': {product_ean}")
         else:
             logger.info(
-                f"Item sem EAN, aguardando mapeamento manual: '{item.name}' no vendedor '{parsed.seller_name}'"
+                f"Item sem EAN, aguardando mapeamento manual: '{item.name}' no vendedor '{seller.name}'"
             )
 
         fiscal_item = FiscalItem(
@@ -303,7 +355,7 @@ async def import_xml(
     return {
         "note_id": note.id,
         "items_count": len(parsed.items),
-        "seller_name": note.seller_name,
+        "seller_name": note.seller.name,
         "total_amount": note.total_amount,
     }
 
@@ -338,7 +390,7 @@ def import_url(
     return {
         "note_id": note.id,
         "items_count": len(parsed.items),
-        "seller_name": note.seller_name,
+        "seller_name": note.seller.name,
         "total_amount": note.total_amount,
     }
 
@@ -433,7 +485,7 @@ def list_fiscal_notes(
         stmt = stmt.where(FiscalNote.date <= date_to)
 
     if seller_name is not None:
-        stmt = stmt.where(FiscalNote.seller_name.ilike(f"%{seller_name}%"))
+        stmt = stmt.where(FiscalNote.seller.has(Seller.name.ilike(f"%{seller_name}%")))
 
     result = db.execute(stmt)
     notes = result.unique().scalars().all()
@@ -447,6 +499,7 @@ class FiscalNoteCreate(BaseModel):
     cnpj: str
     emission_date: datetime
     total_value: float
+    seller_id: Optional[int] = None
     seller_name: Optional[str] = None
     access_key: Optional[str] = None
 
@@ -464,13 +517,36 @@ def create_fiscal_note(
     note_data: FiscalNoteCreate, db: Session = Depends(get_db)
 ) -> FiscalNoteOut:
     """Cria uma nova nota fiscal."""
+    seller_id = note_data.seller_id
+
+    if seller_id is None and note_data.cnpj:
+        seller = db.execute(
+            select(Seller).where(Seller.tax_id == note_data.cnpj)
+        ).scalar_one_or_none()
+
+        if seller is None:
+            seller = Seller(
+                name=note_data.seller_name or "Unknown Seller",
+                tax_id=note_data.cnpj,
+            )
+            db.add(seller)
+            db.flush()
+
+        seller_id = seller.id
+
+    if seller_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="seller_id ou cnpj deve ser informado.",
+        )
+
     # Create the fiscal note
     note = FiscalNote(
         date=note_data.emission_date.date(),
         total_amount=note_data.total_value,
-        seller_name=note_data.seller_name or "Unknown Seller",
+        seller_id=seller_id,
         access_key=note_data.access_key or f"KEY_{note_data.number}",
-        source_type=FiscalSourceType.SCRAPING,  # Using SCRAPING as manual entry type
+        source_type=FiscalSourceType.SCRAPING,
     )
     db.add(note)
     db.commit()
@@ -496,7 +572,7 @@ def create_fiscal_item(
     product_mapping = db.execute(
         select(ProductMapping).where(
             (ProductMapping.raw_description == item_data.description)
-            & (ProductMapping.seller_name == note.seller_name)
+            & (ProductMapping.seller_id == note.seller_id)
         )
     ).scalar_one_or_none()
 
@@ -673,10 +749,9 @@ def create_product_master(
         existing_product.category_id = product.category_id
         db.commit()
         db.refresh(existing_product)
-        logger.info(f"[products/eans] Produto atualizado: ID {existing_product.id}")
+        logger.info(f"[products/eans] Produto atualizado: EAN {existing_product.ean}")
         return {
             "message": "Produto atualizado com sucesso",
-            "id": existing_product.id,
             "ean": existing_product.ean,
         }
     else:
@@ -719,7 +794,7 @@ def create_product_mapping(
         db.query(ProductMapping)
         .filter(
             ProductMapping.raw_description == mapping.raw_description,
-            ProductMapping.seller_name == mapping.seller_name,
+            ProductMapping.seller_id == mapping.seller_id,
         )
         .first()
     )
@@ -739,7 +814,7 @@ def create_product_mapping(
         # Cria um novo mapeamento
         new_mapping = ProductMapping(
             raw_description=mapping.raw_description,
-            seller_name=mapping.seller_name,
+            seller_id=mapping.seller_id,
             product_ean=mapping.product_ean,
         )
         db.add(new_mapping)
@@ -780,9 +855,10 @@ def get_price_comparison(
             FiscalItem.product_name,
             FiscalItem.unit_price,
             FiscalNote.date,
-            FiscalNote.seller_name,
+            Seller.name,
         )
         .join(FiscalNote, FiscalItem.note_id == FiscalNote.id)
+        .join(Seller, FiscalNote.seller_id == Seller.id)
         .where(func.lower(FiscalItem.product_name).contains(cleaned_product_name))
         .order_by(FiscalNote.date.desc())
     )

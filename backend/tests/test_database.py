@@ -11,6 +11,7 @@ from backend.app.models import (
     FiscalItem,
     FiscalNote,
     FiscalSourceType,
+    Seller,
 )
 from backend.app.seed import get_engine, get_session_factory, seed_categories
 
@@ -98,10 +99,17 @@ def test_fiscal_item_association_with_note_and_category() -> None:
         session.add(categoria_mercado)
         session.flush()
 
+        seller = Seller(
+            name="Supermercado Exemplo",
+            tax_id="12345678000190",
+        )
+        session.add(seller)
+        session.flush()
+
         nota = FiscalNote(
             date=date(2025, 1, 1),
             total_amount=100.0,
-            seller_name="Supermercado Exemplo",
+            seller_id=seller.id,
             access_key="ABC123",
             source_type=FiscalSourceType.XML,
         )

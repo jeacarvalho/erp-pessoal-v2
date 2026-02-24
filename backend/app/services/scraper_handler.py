@@ -1,21 +1,62 @@
 from __future__ import annotations
 
-from datetime import date
 import json
+import logging
 import os
 import re
-from typing import Dict, List, Type
+from datetime import date
+from typing import Dict, List, Optional, Type
 from uuid import uuid4
 
 import requests
 from bs4 import BeautifulSoup
 
-from .xml_handler import ParsedItem, ParsedNote
 from .browser_fetcher import BrowserHTMLFetcher
-import logging
+from .xml_handler import ParsedItem, ParsedNote
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+CNPJ_PATTERN = r"\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}"
+
+
+def extract_cnpj_from_text(text: str) -> Optional[str]:
+    """Extrai CNPJ do texto usando regex."""
+    match = re.search(CNPJ_PATTERN, text)
+    if match:
+        cnpj = match.group(0)
+        return cnpj.replace(".", "").replace("-", "").replace("/", "")
+    return None
+
+
+def find_seller_in_page(soup: BeautifulSoup) -> tuple[str, str]:
+    """Busca nome e CNPJ do vendedor na página."""
+    seller_div = soup.find("div", {"class": "txtTopo", "id": "u20"})
+    if seller_div:
+        seller_name = seller_div.get_text(strip=True)
+        logger.info(f"[fiscal-items] seller_name lido: {seller_name}")
+
+        cnpj_div = seller_div.find_next_sibling("div", class_="text")
+        if cnpj_div:
+            cnpj_text = cnpj_div.get_text(strip=True)
+            if "CNPJ:" in cnpj_text.upper():
+                cnpj = extract_cnpj_from_text(cnpj_text)
+                if cnpj:
+                    return seller_name, cnpj
+
+        return seller_name, ""
+
+    page_text = soup.get_text(" ", strip=True)
+    cnpj = extract_cnpj_from_text(page_text)
+    if cnpj:
+        return "Unknown Seller", cnpj
+
+    for tag_name in ("h1", "h2"):
+        tag = soup.find(tag_name)
+        if tag and tag.get_text(strip=True):
+            return tag.get_text(strip=True), ""
+
+    return "Unknown Seller", ""
 
 
 def _looks_like_sefaz_block_page(html: str) -> bool:
@@ -24,85 +65,39 @@ def _looks_like_sefaz_block_page(html: str) -> bool:
 
 
 class BaseSefazAdapter:
-    """Adapter base para diferentes layouts de páginas de NFC-e das SEFAZ estaduais.
-
-    Cada estado pode ter uma estrutura de HTML diferente. Este adapter define a
-    interface que implementações específicas devem seguir.
-    """
+    """Adapter base para diferentes layouts de páginas de NFC-e das SEFAZ estaduais."""
 
     def parse(self, html: str) -> ParsedNote:
-        """Extrai dados da nota a partir do HTML."""
         raise NotImplementedError
 
 
 class DefaultSefazAdapter(BaseSefazAdapter):
-    """Adapter genérico para páginas de NFC-e.
-
-    Esta implementação tenta encontrar:
-    - Data da compra
-    - Nome do estabelecimento
-    - Valor total
-    - Tabela de itens (nome, quantidade, unidade, preço unitário, preço total)
-
-    Como os layouts variam bastante, este adapter é propositalmente genérico e
-    focado em oferecer um ponto de extensão. Em produção, recomenda-se criar
-    adapters específicos por UF.
-    """
+    """Adapter genérico para páginas de NFC-e."""
 
     def parse(self, html: str) -> ParsedNote:
         soup = BeautifulSoup(html, "html.parser")
 
-        # Detecção de páginas de bloqueio / acesso negado (ex.: SEFAZ-RJ).
         normalized_text = soup.get_text(" ", strip=True).lower()
         if (
             "acesso negado ao portal" in normalized_text
             or "acesso bloqueado" in normalized_text
         ):
-            raise ValueError(
-                "Acesso à página da NFC-e foi negado pela SEFAZ. Conteúdo de nota não disponível."
-            )
+            raise ValueError("Acesso à página da NFC-e foi negado pela SEFAZ.")
 
-        # Tentativa genérica de localizar informações básicas
-        # (em um cenário real, isso seria ajustado por estado).
-        seller_name = self._extract_seller_name(soup)
+        seller_name, seller_tax_id = find_seller_in_page(soup)
         total_amount = self._extract_total_amount(soup)
         emission_date = self._extract_date(soup)
-
         items = self._extract_items(soup)
-
         access_key = self._extract_access_key(soup)
 
         return ParsedNote(
             date=emission_date,
             seller_name=seller_name,
+            seller_tax_id=seller_tax_id,
             total_amount=total_amount,
             access_key=access_key,
             items=items,
         )
-
-    def _extract_seller_name(self, soup: BeautifulSoup) -> str:
-        # Procura pelo elemento txtTopo com id u20 que contém o nome do vendedor
-        seller_div = soup.find("div", {"class": "txtTopo", "id": "u20"})
-        if seller_div:
-            seller_name = seller_div.get_text(strip=True)
-            logger.info(f"[fiscal-items] seller_name lido: {seller_name}")
-
-            # Procura pelo CNPJ que está na div seguinte
-            cnpj_div = seller_div.find_next_sibling("div", class_="text")
-            if cnpj_div:
-                cnpj_text = cnpj_div.get_text(strip=True)
-                if "CNPJ:" in cnpj_text.upper():
-                    return f"{seller_name}; {cnpj_text}"
-
-            return seller_name
-
-        # Se não encontrar o formato específico, tenta métodos alternativos
-        for tag_name in ("h1", "h2"):
-            tag = soup.find(tag_name)
-            if tag and tag.get_text(strip=True):
-                return tag.get_text(strip=True)
-
-        return "Estabelecimento Desconhecido"
 
     def _extract_access_key(self, soup: BeautifulSoup) -> str:
         # First, try to find the access key using specific HTML elements
@@ -529,14 +524,7 @@ class DefaultSefazAdapter(BaseSefazAdapter):
 
 
 class RJSefazNFCeAdapter(BaseSefazAdapter):
-    """Adapter específico para o layout moderno de NFC-e do RJ.
-
-    O layout não usa tabela tradicional; cada item aparece como um bloco com
-    texto semelhante a:
-
-        TAXA ENTREGA CAMBOIN (Código: 6378 )
-        Qtde:1   UN: UN   Vl. Unit.: 7,99   Vl. Total 7,99
-    """
+    """Adapter específico para o layout moderno de NFC-e do RJ."""
 
     ITEM_PATTERN = re.compile(
         r"^(?P<name>.+?)\s+Qtde:(?P<qty>[\d.,]+).*?Vl\. Unit\.:\s*(?P<unit_price>[\d.,]+).*?Vl\. Total\s*(?P<total_price>[\d.,]+)",
@@ -546,52 +534,60 @@ class RJSefazNFCeAdapter(BaseSefazAdapter):
     def parse(self, html: str) -> ParsedNote:
         soup = BeautifulSoup(html, "html.parser")
 
-        seller_name = self._extract_seller_name(soup)
+        seller_name, seller_tax_id = find_seller_in_page(soup)
         total_amount = self._extract_total_amount(soup)
         emission_date = self._extract_date(soup)
         items = self._extract_items(soup)
-
         access_key = self._extract_access_key(soup)
 
         return ParsedNote(
             date=emission_date,
             seller_name=seller_name,
+            seller_tax_id=seller_tax_id,
             total_amount=total_amount,
             access_key=access_key,
             items=items,
         )
 
-    def _extract_seller_name(self, soup: BeautifulSoup) -> str:
-        # Procura pelo elemento txtTopo com id u20 que contém o nome do vendedor (formato padrão)
+    def _extract_seller_name_and_tax_id(self, soup: BeautifulSoup) -> tuple[str, str]:
+        """Extrai nome e CNPJ do vendedor."""
+
+        def extract_cnpj_from_text(text: str) -> Optional[str]:
+            """Extrai CNPJ do texto usando regex."""
+            cnpj_pattern = r"\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}"
+            match = re.search(cnpj_pattern, text)
+            if match:
+                cnpj = match.group(0)
+                return cnpj.replace(".", "").replace("-", "").replace("/", "")
+            return None
+
         seller_div = soup.find("div", {"class": "txtTopo", "id": "u20"})
         if seller_div:
             seller_name = seller_div.get_text(strip=True)
             logger.info(f"[fiscal-items] seller_name lido: {seller_name}")
 
-            # Procura pelo CNPJ que está na div seguinte
             cnpj_div = seller_div.find_next_sibling("div", class_="text")
             if cnpj_div:
                 cnpj_text = cnpj_div.get_text(strip=True)
                 if "CNPJ:" in cnpj_text.upper():
-                    return f"{seller_name}; {cnpj_text}"
+                    cnpj = extract_cnpj_from_text(cnpj_text)
+                    if cnpj:
+                        return seller_name, cnpj
 
-            return seller_name
+            return seller_name, ""
 
-        # Se não encontrar o formato específico, tenta métodos alternativos (como no RJ)
-        # No layout recente, o nome do mercado fica num bloco grande no topo.
-        # Estratégia: pegar o primeiro bloco em destaque após o logo.
-        candidates = []
-        for tag_name in ("h1", "h2", "strong", "div"):
-            for el in soup.find_all(tag_name):
-                text = el.get_text(strip=True)
-                if not text:
-                    continue
-                if "cnpj:" in text.lower():
-                    # Elemento que contém nome + CNPJ; o nome geralmente é o primeiro pedaço.
-                    candidates.append(text.split("CNPJ")[0].strip(" :-"))
-        if candidates:
-            return candidates[0]
-        return "Estabelecimento Desconhecido"
+        page_text = soup.get_text(" ", strip=True)
+        cnpj = extract_cnpj_from_text(page_text)
+        if cnpj:
+            return "Unknown Seller", cnpj
+
+        # Fallback: tentar encontrar nome em h1 ou h2
+        for tag_name in ("h1", "h2"):
+            tag = soup.find(tag_name)
+            if tag and tag.get_text(strip=True):
+                return tag.get_text(strip=True), ""
+
+        return "Unknown Seller", ""
 
     def _extract_access_key(self, soup: BeautifulSoup) -> str:
         # First, try to find the access key using specific HTML elements

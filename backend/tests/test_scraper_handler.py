@@ -81,7 +81,7 @@ class TestDefaultSefazAdapter:
 
         result = adapter.parse(html)
         assert "Supermercado Teste" in result.seller_name
-        assert "CNPJ" in result.seller_name
+        assert result.seller_tax_id == "12345678000190"
 
     def test_parse_extracts_seller_name_from_h1(self):
         """Should extract seller name from h1 tag."""
@@ -105,7 +105,7 @@ class TestDefaultSefazAdapter:
         html = f"<html><body>No seller info</body>{ITEMS_TABLE}</html>"
 
         result = adapter.parse(html)
-        assert result.seller_name == "Estabelecimento Desconhecido"
+        assert result.seller_name == "Unknown Seller"
 
     def test_extract_access_key_from_span_chave(self):
         """Should extract access key from span with class chave."""
@@ -251,7 +251,7 @@ class TestRJSefazNFCeAdapter:
 
         result = adapter.parse(html)
         assert "Supermercado RJ" in result.seller_name
-        assert "CNPJ" in result.seller_name
+        assert result.seller_tax_id == "98765432000110"
 
     def test_parse_extracts_seller_name_from_cnpj_text(self):
         """Should extract seller name from elements containing CNPJ text."""
@@ -259,7 +259,8 @@ class TestRJSefazNFCeAdapter:
         html = f"""<html><strong>Mercado Exemplo CNPJ: 11.111.111/0001-11</strong>{ITEMS_TABLE}</html>"""
 
         result = adapter.parse(html)
-        assert "Mercado Exemplo" in result.seller_name
+        assert result.seller_name == "Unknown Seller"
+        assert result.seller_tax_id == "11111111000111"
 
     def test_extract_total_amount_from_valor_pagar(self):
         """Should extract total amount from 'Valor a pagar' text."""
