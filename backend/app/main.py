@@ -308,6 +308,27 @@ async def import_xml(
     }
 
 
+@app.post("/import/xml-rj")
+async def import_xml_rj(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Importa uma nota a partir de um arquivo XML da SEFAZ RJ (NFC-e modelo 65)."""
+
+    content = await file.read()
+    processor = XMLProcessor()
+    parsed = processor.parse(content)
+
+    note = _persist_parsed_note(parsed, FiscalSourceType.XML, db)
+
+    return {
+        "note_id": note.id,
+        "items_count": len(parsed.items),
+        "seller_name": note.seller_name,
+        "total_amount": note.total_amount,
+    }
+
+
 class ImportUrlPayload(BaseModel):
     url: HttpUrl
     use_browser: bool = False

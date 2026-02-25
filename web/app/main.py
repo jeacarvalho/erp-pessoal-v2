@@ -611,8 +611,8 @@ class ERPApp:
                 with open(file_path, "rb") as f:
                     files = {"file": (e.files[0].name, f, "application/xml")}
 
-                    # Envia para o backend
-                    response = self.http_client.post("/import/xml", files=files)
+                    # Envia para o backend (SEFAZ RJ)
+                    response = self.http_client.post("/import/xml-rj", files=files)
                     response.raise_for_status()
                     result = response.json()
 
