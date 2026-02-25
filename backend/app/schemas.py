@@ -29,7 +29,7 @@ class FiscalItemOut(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    @field_validator('product_ean', mode='before')
+    @field_validator("product_ean", mode="before")
     @classmethod
     def convert_product_ean_to_string(cls, v):
         if v is not None:
@@ -95,6 +95,22 @@ class ProductMasterCreate(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SellerTrendProduct(BaseModel):
+    """Schema para produto no histórico de tendências por vendedor."""
+
+    product_key: str
+    product_name: str
+    price_history: List[float]
+    variation_percent: Optional[float] = None
+
+
+class SellerTrendsOut(BaseModel):
+    """Schema de saída para tendências de preço por vendedor."""
+
+    seller_name: str
+    products: List[SellerTrendProduct]
+
+
 __all__ = [
     "CategoryOut",
     "FiscalItemOut",
@@ -103,5 +119,6 @@ __all__ = [
     "TransactionOut",
     "ProductMappingCreate",
     "ProductMasterCreate",
+    "SellerTrendProduct",
+    "SellerTrendsOut",
 ]
-

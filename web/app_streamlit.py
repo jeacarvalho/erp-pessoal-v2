@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 from PIL import Image
 from pyzbar import pyzbar
+from urllib.parse import quote
 
 # Backend URL configurável via variável de ambiente
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
@@ -58,6 +59,28 @@ def get_transactions():
 def get_fiscal_items():
     """Get fiscal items from backend with caching"""
     return fetch_data(f"{BACKEND_URL}/fiscal-items")
+
+
+@st.cache_data(ttl=60)
+def get_sellers():
+    """Get sellers with history from backend with caching"""
+    return fetch_data(f"{BACKEND_URL}/analytics/sellers/with-history")
+
+
+def fetch_seller_trends(seller_name: str):
+    """Fetch seller trends data from backend"""
+    try:
+        response = httpx.get(
+            f"{BACKEND_URL}/analytics/seller-trends?seller_name={quote(seller_name, safe='')}"
+        )
+        response.raise_for_status()
+        return response.json()
+    except httpx.RequestError as e:
+        st.error(f"Erro ao conectar ao backend: {str(e)}")
+        return None
+    except httpx.HTTPStatusError as e:
+        st.error(f"Erro HTTP ao acessar o backend: {str(e)}")
+        return None
 
 
 def main():
@@ -231,7 +254,86 @@ def main():
 
     elif page == "Histórico de Preços (Inflação)":
         st.header("Histórico de Preços (Inflação)")
-        st.write("Funcionalidade de histórico de preços em desenvolvimento.")
+
+        sellers = get_sellers()
+
+        if sellers:
+            selected_seller = st.selectbox(
+                "Selecione o Vendedor:",
+                options=sellers,
+            )
+
+            if selected_seller:
+                trends_data = fetch_seller_trends(selected_seller)
+
+                if trends_data and trends_data.get("products"):
+                    products = trends_data["products"]
+
+                    sorted_products = sorted(
+                        products,
+                        key=lambda x: (
+                            x.get("variation_percent") is None,
+                            -(x.get("variation_percent") or 0),
+                        ),
+                    )
+
+                    top_10 = sorted_products[:10]
+
+                    if top_10:
+                        st.subheader("Top 10 Produtos (por variação de preço)")
+                        table_data = []
+                        for p in top_10:
+                            last_price = p["price_history"][0]
+                            prev_price = (
+                                p["price_history"][1]
+                                if len(p["price_history"]) > 1
+                                else None
+                            )
+                            variation = p.get("variation_percent")
+
+                            table_data.append(
+                                {
+                                    "Produto": p["product_name"],
+                                    "Último Preço (R$)": f"{last_price:.2f}",
+                                    "Preço Anterior (R$)": f"{prev_price:.2f}"
+                                    if prev_price
+                                    else "-",
+                                    "Variação (%)": f"{variation:.2f}%"
+                                    if variation is not None
+                                    else "-",
+                                }
+                            )
+
+                        if table_data:
+                            df = pd.DataFrame(table_data)
+                            st.dataframe(df, use_container_width=True)
+
+                        villains = [
+                            p for p in top_10 if p.get("variation_percent") is not None
+                        ]
+                        if villains:
+                            villains_df = pd.DataFrame(
+                                {
+                                    "Produto": [
+                                        p["product_name"][:25] + "..."
+                                        if len(p["product_name"]) > 25
+                                        else p["product_name"]
+                                        for p in villains
+                                    ],
+                                    "Variação (%)": [
+                                        p["variation_percent"] for p in villains
+                                    ],
+                                }
+                            )
+                            if not villains_df.empty:
+                                villains_df = villains_df.set_index("Produto")
+                                st.bar_chart(villains_df)
+                    else:
+                        st.info("Sem dados de tendências para este vendedor.")
+                else:
+                    st.info(f"Sem dados de tendências para {selected_seller}.")
+        else:
+            st.warning("Nenhum vendedor encontrado.")
 
     elif page == "Comparação de Preços":
         st.header("Comparação de Preços entre Mercados")
@@ -263,7 +365,9 @@ def main():
 
                         # Calculate average prices per seller
                         avg_prices = (
-                            df.groupby("seller_name")["unit_price"].mean().sort_values()
+                            df.groupby("seller_name")["unit_price"]
+                            .mean()
+                            .sort_values(ascending=True)  # type: ignore[call-overload]
                         )
 
                         # Find the cheapest seller
@@ -308,11 +412,11 @@ def main():
 
                         # Show detailed data table
                         st.subheader("Dados Detalhados")
-                        st.dataframe(
-                            df[
-                                ["product_name", "unit_price", "date", "seller_name"]
-                            ].sort_values("date", ascending=False)
-                        )
+                        detailed_df = df[
+                            ["product_name", "unit_price", "date", "seller_name"]
+                        ]
+                        detailed_df = detailed_df.sort_values("date", ascending=False)  # type: ignore[call-overload]
+                        st.dataframe(detailed_df)
                     else:
                         st.warning("Nenhum dado de preço encontrado para este produto.")
                 else:
@@ -445,7 +549,7 @@ def main():
 
                             submit_button = st.form_submit_button("Cadastrar Produto")
 
-                            if submit_button and name_standard:
+                            if submit_button and name_standard and owner:
                                 # Register the product
                                 payload = {
                                     "ean": ean_code,
