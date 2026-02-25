@@ -198,9 +198,9 @@ def main():
                                 )
                             }
 
-                            # Call backend API for XML import
+                            # Call backend API for XML import (SEFAZ RJ)
                             response = httpx.post(
-                                f"{BACKEND_URL}/import/xml", files=files
+                                f"{BACKEND_URL}/import/xml-rj", files=files
                             )
 
                             if response.status_code == 200:
