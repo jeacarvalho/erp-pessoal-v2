@@ -39,6 +39,7 @@ from .schemas import (
 from .seed import get_session_factory, seed_categories
 from .services.scraper_handler import ScraperImporter
 from .services.xml_handler import ParsedNote, XMLProcessor
+from .services.flyer_analyzer import FlyerAnalyzer
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -784,6 +785,87 @@ def clean_product_name(product_name: str) -> str:
     return cleaned
 
 
+def fuzzy_match_product(offer_description: str, db: Session) -> Optional[tuple]:
+    """
+    Busca produto similar na base usando fuzzy matching.
+    Retorna (items, matched_name) ou None se não encontrar.
+    """
+    cleaned_offer = clean_product_name(offer_description)
+    offer_words = set(cleaned_offer.split())
+
+    # Palavras comuns a ignorar
+    stop_words = {
+        "de",
+        "do",
+        "da",
+        "em",
+        "para",
+        "com",
+        "sem",
+        "kg",
+        "ml",
+        "l",
+        "g",
+        "un",
+        "pc",
+        "pct",
+    }
+    offer_keywords = offer_words - stop_words
+
+    if not offer_keywords:
+        return None
+
+    # Busca produtos que contêm qualquer uma das palavras-chave
+    all_items = db.query(FiscalItem).all()
+
+    best_match = None
+    best_score = 0
+
+    for item in all_items:
+        item_cleaned = clean_product_name(item.product_name)
+        item_words = set(item_cleaned.split()) - stop_words
+
+        # Calcula interseção de palavras
+        intersection = offer_keywords & item_words
+
+        if intersection:
+            # Score: proporção de palavras do encarte que aparecem no produto
+            score = len(intersection) / len(offer_keywords)
+
+            # Bonus se as palavras mais importantes estão presentes
+            for word in [
+                "presunto",
+                "cozido",
+                "oleo",
+                "arroz",
+                "feijao",
+                "leite",
+                "açucar",
+                "azeite",
+            ]:
+                if word in item_cleaned and word in cleaned_offer:
+                    score += 0.2
+
+            if score > best_score:
+                best_score = score
+                best_match = item
+
+    if best_match and best_score >= 0.3:
+        # Busca as 3 compras mais recentes desse produto
+        stmt = (
+            select(FiscalItem)
+            .join(FiscalNote, FiscalItem.note_id == FiscalNote.id)
+            .where(FiscalItem.product_name.ilike(f"%{best_match.product_name}%"))
+            .order_by(FiscalNote.date.desc())
+            .limit(3)
+        )
+        items = db.execute(stmt).scalars().all()
+        if items:
+            return (items, best_match.product_name)
+
+    return None
+
+
 @app.get("/analytics/price-comparison")
 def get_price_comparison(
     product_name: str = Query(
@@ -914,6 +996,53 @@ def get_seller_trends(seller_name: str = Query(...), db: Session = Depends(get_d
         )
 
     return {"seller_name": actual_seller_name, "products": products}
+
+
+class FlyerAnalysisResult(BaseModel):
+    product_name: str
+    offer_price: float
+    base_avg_price: float
+    is_deal: bool
+
+
+@app.post("/analytics/analyze-flyer", response_model=List[FlyerAnalysisResult])
+async def analyze_flyer(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> List[FlyerAnalysisResult]:
+    """Analisa um encarte de ofertas usando OCR e compara com preços históricos."""
+    image_bytes = await file.read()
+
+    analyzer = FlyerAnalyzer()
+    offers = analyzer.extract_offers(image_bytes)
+
+    results: List[FlyerAnalysisResult] = []
+
+    for offer in offers:
+        match_result = fuzzy_match_product(offer.description, db)
+
+        if not match_result:
+            continue
+
+        items, matched_name = match_result
+
+        prices = [item.unit_price for item in items if item.unit_price]
+        if not prices:
+            continue
+
+        base_avg_price = sum(prices) / len(prices)
+        is_deal = offer.price < base_avg_price
+
+        results.append(
+            FlyerAnalysisResult(
+                product_name=offer.description,
+                offer_price=offer.price,
+                base_avg_price=round(base_avg_price, 2),
+                is_deal=is_deal,
+            )
+        )
+
+    return results
 
 
 __all__ = ["app", "get_db", "DATABASE_URL", "SQLITE_DB_PATH"]

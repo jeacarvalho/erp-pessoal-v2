@@ -83,6 +83,23 @@ def fetch_seller_trends(seller_name: str):
         return None
 
 
+def analyze_flyer(image_file):
+    """Send flyer image to backend for OCR analysis"""
+    try:
+        files = {"file": (image_file.name, image_file.getvalue(), image_file.type)}
+        response = httpx.post(
+            f"{BACKEND_URL}/analytics/analyze-flyer", files=files, timeout=120.0
+        )
+        response.raise_for_status()
+        return response.json()
+    except httpx.RequestError as e:
+        st.error(f"Erro ao conectar ao backend: {str(e)}")
+        return None
+    except httpx.HTTPStatusError as e:
+        st.error(f"Erro HTTP ao acessar o backend: {str(e)}")
+        return None
+
+
 def main():
     # Set page configuration
     st.set_page_config(layout="wide", page_title="ERP Pessoal - Dignidade Financeira")
@@ -101,6 +118,7 @@ def main():
             "Histórico de Preços (Inflação)",
             "Comparação de Preços",
             "Scanner de Produtos",
+            "Analisar Encarte",
         ],
     )
 
@@ -631,6 +649,100 @@ def main():
                 )
         else:
             st.info("Aguardando captura de imagem...")
+
+    elif page == "Analisar Encarte":
+        st.header("Analisar Encarte de Ofertas")
+
+        st.markdown("""
+        Envie uma imagem de encarte de ofertas (screenshot de site, foto de folheto, etc.)
+        para comparar os preços com seu histórico de compras.
+        """)
+
+        uploaded_file = st.file_uploader(
+            "Escolha um arquivo (imagem ou PDF):",
+            type=["png", "jpg", "jpeg", "webp", "pdf"],
+            help="Aceita imagens PNG, JPG, JPEG, WebP ou PDF",
+        )
+
+        if uploaded_file is not None:
+            is_pdf = uploaded_file.type == "application/pdf"
+
+            col1, col2 = st.columns([1, 2])
+
+            with col1:
+                if is_pdf:
+                    st.info(f"📄 PDF enviado: {uploaded_file.name}")
+                else:
+                    st.image(
+                        uploaded_file, caption="Encarte enviado", use_column_width=True
+                    )
+
+            with col2:
+                if st.button("Analisar Ofertas", type="primary"):
+                    with st.spinner("Analisando encarte com OCR..."):
+                        results = analyze_flyer(uploaded_file)
+
+                        if results:
+                            if len(results) == 0:
+                                st.warning(
+                                    "Nenhum produto do encarte foi encontrado no seu histórico de compras. "
+                                    "Importe algumas notas fiscais primeiro!"
+                                )
+                            else:
+                                st.success(
+                                    f"Encontradas {len(results)} ofertas comparadas!"
+                                )
+
+                                deals = [r for r in results if r.get("is_deal")]
+                                not_deals = [r for r in results if not r.get("is_deal")]
+
+                                if deals:
+                                    st.markdown("### 🔥 Ofertas Bomba!")
+                                    for deal in deals:
+                                        savings = (
+                                            deal["base_avg_price"] - deal["offer_price"]
+                                        )
+                                        percent = (
+                                            savings / deal["base_avg_price"]
+                                        ) * 100
+                                        st.markdown(
+                                            f"""
+                                            <div style="background-color: #d4edda; padding: 10px; border-radius: 5px; margin: 5px 0;">
+                                                <strong>{deal["product_name"]}</strong><br>
+                                                💰 Oferta: <strong>R$ {deal["offer_price"]:.2f}</strong><br>
+                                                📊 Média anterior: R$ {deal["base_avg_price"]:.2f}<br>
+                                                🎉 Economia: <strong>R$ {savings:.2f} ({percent:.1f}%)</strong>
+                                            </div>
+                                            """,
+                                            unsafe_allow_html=True,
+                                        )
+
+                                if not_deals:
+                                    st.markdown("### ℹ️ Preços Normais (sem desconto)")
+                                    for item in not_deals:
+                                        st.markdown(
+                                            f"""
+                                            <div style="background-color: #f8f9fa; padding: 8px; border-radius: 5px; margin: 5px 0;">
+                                                <strong>{item["product_name"]}</strong><br>
+                                                💰 Oferta: R$ {item["offer_price"]:.2f} | 
+                                                📊 Média: R$ {item["base_avg_price"]:.2f}
+                                            </div>
+                                            """,
+                                            unsafe_allow_html=True,
+                                        )
+
+                                st.markdown("### 📋 Detalhes")
+                                df = pd.DataFrame(results)
+                                st.dataframe(df, use_container_width=True)
+                        elif results is None:
+                            st.error(
+                                "Erro ao analisar encarte. Verifique se o backend está rodando."
+                            )
+                        else:
+                            st.info(
+                                "Nenhum produto do encarte encontrado no seu histórico de compras. "
+                                "Importe algumas notas fiscais desses produtos primeiro!"
+                            )
 
 
 if __name__ == "__main__":

@@ -10,3 +10,7 @@ beautifulsoup4
 lxml
 playwright
 ruff
+easyocr
+Pillow
+PyPDF2
+pdf2image
