@@ -400,7 +400,14 @@ test(api): adiciona teste de integração
 - **Mobile .env**: Após alterar .env, sempre fazer rebuild (`npm run build && npx cap sync android && ./gradlew assembleDebug`)
 - **Testes com mocks**: Evitar `reload_database_modules` com `xml_handler` e `scraper_handler` - pode quebrar mocks de outros testes (usar dependência explícita ou fixture isolada)
 - **ITEMS_TABLE em testes**: Sempre incluir colunas `Vl. Unit.` e `Vl. Total` no HTML mockado para parsing correto dos itens
+- **URLs com caracteres especiais**: Para endpoints que recebem nomes com `/`, `;`, usar query params em vez de path params (ex: `/analytics/seller-trends?seller_name=X` em vez de `/analytics/seller-trends/{seller_name}`)
+- **Normalização de seller names**: Sempre normalizar nomes de vendedores (ex: espaços → `-`) ao salvar no banco para evitar problemas de URL
+
+### Novos Endpoints (2026-02-25)
+- `GET /analytics/sellers` - Lista todos os vendedores únicos
+- `GET /analytics/sellers/with-history` - Lista vendedores com +1 nota (para criar histórico)
+- `GET /analytics/seller-trends?seller_name=X` - Retorna tendências de preços por vendedor
 
 ---
 
-**Última atualização**: 2026-02-23
+**Última atualização**: 2026-02-25

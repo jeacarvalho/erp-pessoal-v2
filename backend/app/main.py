@@ -6,6 +6,7 @@ import re
 from datetime import date, datetime
 from contextlib import asynccontextmanager
 from typing import Generator, List, Optional
+from urllib.parse import unquote
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,6 +33,8 @@ from .schemas import (
     TransactionOut,
     ProductMappingCreate,
     ProductMasterCreate,
+    SellerTrendProduct,
+    SellerTrendsOut,
 )
 from .seed import get_session_factory, seed_categories
 from .services.scraper_handler import ScraperImporter
@@ -821,6 +824,96 @@ def get_price_comparison(
         )
 
     return comparison_data
+
+
+@app.get("/analytics/sellers", response_model=List[str])
+def get_sellers(db: Session = Depends(get_db)):
+    """Retorna lista de vendedores únicos."""
+    sellers = (
+        db.query(FiscalNote.seller_name)
+        .distinct()
+        .order_by(FiscalNote.seller_name)
+        .all()
+    )
+    return [s[0] for s in sellers]
+
+
+@app.get("/analytics/sellers/with-history", response_model=List[str])
+def get_sellers_with_history(db: Session = Depends(get_db)):
+    """Retorna lista de vendedores com mais de uma nota fiscal (com histórico de preços)."""
+    sellers = (
+        db.query(FiscalNote.seller_name, func.count(FiscalNote.id).label("count"))
+        .group_by(FiscalNote.seller_name)
+        .having(func.count(FiscalNote.id) > 1)
+        .order_by(FiscalNote.seller_name)
+        .all()
+    )
+    return [s[0] for s in sellers]
+
+
+@app.get("/analytics/seller-trends", response_model=SellerTrendsOut)
+def get_seller_trends(seller_name: str = Query(...), db: Session = Depends(get_db)):
+    """Recupera tendências de preços por vendedor.
+
+    Retorna as 3 notas fiscais mais recentes para o vendedor informado,
+    com histórico de preços por produto e variação percentual.
+    """
+    decoded_name = unquote(seller_name)
+    logger.info(f"Searching for seller: {decoded_name}")
+
+    notes = (
+        db.query(FiscalNote)
+        .filter(FiscalNote.seller_name.ilike(f"%{decoded_name}%"))
+        .order_by(FiscalNote.date.desc())
+        .limit(3)
+        .all()
+    )
+
+    logger.info(f"Found {len(notes)} notes")
+
+    if not notes:
+        return {"seller_name": decoded_name, "products": []}
+
+    actual_seller_name = notes[0].seller_name if notes else seller_name
+    product_history: dict = {}
+
+    for note in notes:
+        for item in note.items:
+            product_key = (
+                str(item.product_ean) if item.product_ean else item.product_name
+            )
+
+            if product_key not in product_history:
+                product_history[product_key] = {
+                    "product_name": item.product_name,
+                    "prices": [],
+                }
+
+            product_history[product_key]["prices"].append(item.unit_price)
+
+    products = []
+    for product_key, data in product_history.items():
+        prices = data["prices"][:3]
+
+        variation_percent = None
+        if len(prices) >= 2:
+            previous_price = prices[1]
+            current_price = prices[0]
+            if previous_price > 0:
+                variation_percent = round(
+                    ((current_price - previous_price) / previous_price) * 100, 2
+                )
+
+        products.append(
+            SellerTrendProduct(
+                product_key=product_key,
+                product_name=data["product_name"],
+                price_history=prices,
+                variation_percent=variation_percent,
+            )
+        )
+
+    return {"seller_name": actual_seller_name, "products": products}
 
 
 __all__ = ["app", "get_db", "DATABASE_URL", "SQLITE_DB_PATH"]
