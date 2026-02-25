@@ -242,6 +242,13 @@ Sistema de gestão financeira pessoal com controle de:
 - O browser fetcher sempre roda em modo **headless** (silencioso, sem abrir janela)
 - URLs já processadas são salvas em `data/processed_urls_backup.json`
 
+### Sistema de Importação de XML
+- Endpoints disponíveis:
+  - `POST /import/xml` - Importa NF-e/NFC-e modelo 55
+  - `POST /import/xml-rj` - Importa NFC-e modelo 65 da SEFAZ RJ
+- O parser `XMLProcessor` usa o namespace padrão `http://www.portalfiscal.inf.br/nfe`
+- Suporta ambos os modelos (nacional e regional RJ)
+
 ### Configuração de Ambientes (DEV/PROD)
 
 O sistema suporta configuração flexível via variáveis de ambiente para facilitar a troca entre ambientes.

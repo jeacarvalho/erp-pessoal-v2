@@ -4,7 +4,8 @@ import logging
 import os
 import re
 from datetime import date, datetime
-from typing import AsyncGenerator, Generator, List, Optional
+from contextlib import asynccontextmanager
+from typing import Generator, List, Optional
 
 from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -63,9 +64,6 @@ def get_db() -> Generator[Session, None, None]:
         yield db
     finally:
         db.close()
-
-
-from contextlib import asynccontextmanager
 
 
 # Configure logging
@@ -409,7 +407,7 @@ def restore_from_backup(db: Session = Depends(get_db)) -> dict:
             parsed = importer.import_from_url(str(url), force_browser=False)
             time.sleep(5)
             # Persist the parsed note to the database
-            note = _persist_parsed_note(parsed, FiscalSourceType.SCRAPING, db)
+            _persist_parsed_note(parsed, FiscalSourceType.SCRAPING, db)
             restored_count += 1
 
         except Exception as e:
@@ -812,12 +810,12 @@ def get_price_comparison(
     rows = result.all()
 
     comparison_data = []
-    for product_name, unit_price, date, seller_name in rows:
+    for product_name, unit_price, transaction_date, seller_name in rows:
         comparison_data.append(
             {
                 "product_name": product_name,
                 "unit_price": float(unit_price),
-                "date": date.isoformat(),
+                "date": transaction_date.isoformat(),
                 "seller_name": seller_name,
             }
         )
