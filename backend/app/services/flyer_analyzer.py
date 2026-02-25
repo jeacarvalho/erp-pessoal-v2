@@ -35,10 +35,9 @@ class FlyerAnalyzer:
 
     def extract_offers(self, file_bytes: bytes) -> List[ExtractedOffer]:
         """Extrai ofertas (produto + preço) de um encarte (imagem ou PDF)."""
-        file_bytes_io = io.BytesIO(file_bytes)
 
         if file_bytes[:5] == b"%PDF-":
-            return self._extract_from_pdf(file_bytes_io)
+            return self._extract_from_pdf(file_bytes)
 
         return self._extract_from_image(file_bytes)
 
@@ -52,22 +51,34 @@ class FlyerAnalyzer:
 
         return self._parse_ocr_results(results)
 
-    def _extract_from_pdf(self, pdf_bytes_io: io.BytesIO) -> List[ExtractedOffer]:
+    def _extract_from_pdf(self, pdf_bytes: bytes) -> List[ExtractedOffer]:
         """Extrai ofertas de um PDF (converte cada página para imagem)."""
-        reader = PdfReader(pdf_bytes_io)
         all_offers: List[ExtractedOffer] = []
 
-        ocr_reader = self._get_reader(self.languages)
+        try:
+            from pdf2image import convert_from_bytes
 
-        for page_num, page in enumerate(reader.pages):
-            try:
-                page_image = self._pdf_page_to_image(page)
-                if page_image:
-                    results = ocr_reader.readtext(page_image)
-                    page_offers = self._parse_ocr_results(results)
-                    all_offers.extend(page_offers)
-            except Exception as e:
-                continue
+            reader = PdfReader(io.BytesIO(pdf_bytes))
+            num_pages = len(reader.pages)
+
+            ocr_reader = self._get_reader(self.languages)
+
+            # Process up to first 3 pages (most likely to have offers)
+            for page_num in range(1, min(num_pages + 1, 4)):
+                try:
+                    images = convert_from_bytes(
+                        pdf_bytes, dpi=150, first_page=page_num, last_page=page_num
+                    )
+                    if images:
+                        img_array = np.array(images[0])
+                        results = ocr_reader.readtext(img_array)
+                        page_offers = self._parse_ocr_results(results)
+                        all_offers.extend(page_offers)
+                except Exception:
+                    continue
+
+        except Exception as e:
+            pass
 
         return all_offers
 

@@ -193,6 +193,7 @@ Sistema de gestão financeira pessoal com controle de:
 - **Testes**: pytest (66 testes, 70% cobertura mínima)
 - **Linter**: Ruff
 - **Scraping**: Playwright, BeautifulSoup4
+- **OCR**: easyocr, Pillow, PyPDF2, pdf2image
 - **Infra**: Docker (opcional)
 
 ### Convenções do Projeto
@@ -209,7 +210,7 @@ Sistema de gestão financeira pessoal com controle de:
     /app
       /models       # SQLAlchemy models
       /schemas      # Pydantic schemas
-      /services     # Business logic (xml_handler, scraper_handler, browser_fetcher)
+      /services     # Business logic (xml_handler, scraper_handler, browser_fetcher, flyer_analyzer)
       main.py       # FastAPI app
     /tests          # 66 testes (pytest)
   /web              # Interface Streamlit
@@ -402,11 +403,21 @@ test(api): adiciona teste de integração
 - **ITEMS_TABLE em testes**: Sempre incluir colunas `Vl. Unit.` e `Vl. Total` no HTML mockado para parsing correto dos itens
 - **URLs com caracteres especiais**: Para endpoints que recebem nomes com `/`, `;`, usar query params em vez de path params (ex: `/analytics/seller-trends?seller_name=X` em vez de `/analytics/seller-trends/{seller_name}`)
 - **Normalização de seller names**: Sempre normalizar nomes de vendedores (ex: espaços → `-`) ao salvar no banco para evitar problemas de URL
+- **OCR easyocr**: Precisa converter PIL Image para numpy array antes de passar para `reader.readtext()` - passando objeto Image diretamente causa erro
+- **Parser de encartes**: Encartes têm múltiplas colunas (produto na esquerda, preço na direita) - usar coordenadas X/Y para parear corretamente
+- **Fuzzy matching**: Nomes de produtos do encarte raramente batem exatamente com a base - usar similaridade de palavras-chave em vez de contains
 
 ### Novos Endpoints (2026-02-25)
 - `GET /analytics/sellers` - Lista todos os vendedores únicos
 - `GET /analytics/sellers/with-history` - Lista vendedores com +1 nota (para criar histórico)
 - `GET /analytics/seller-trends?seller_name=X` - Retorna tendências de preços por vendedor
+
+### Sistema de Análise de Encartes (OCR)
+- `POST /analytics/analyze-flyer` - Analisa imagem/PDF de encarte e compara com preços históricos
+- Usa OCR (easyocr) para extrair produtos e preços de encartes
+- Fuzzy matching para encontrar produtos similares no histórico de compras
+- Suporta imagens (PNG, JPG, JPEG, WebP) e PDF
+- Retorna lista de ofertas com comparação de preços
 
 ---
 
