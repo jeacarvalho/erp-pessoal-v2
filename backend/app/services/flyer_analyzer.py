@@ -77,7 +77,7 @@ class FlyerAnalyzer:
                 except Exception:
                     continue
 
-        except Exception as e:
+        except Exception:
             pass
 
         return all_offers

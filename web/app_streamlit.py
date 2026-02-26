@@ -100,6 +100,24 @@ def analyze_flyer(image_file):
         return None
 
 
+def analyze_url(url: str, use_browser: bool = False):
+    """Send URL to backend for scraping and analysis"""
+    try:
+        response = httpx.post(
+            f"{BACKEND_URL}/analytics/analyze-url",
+            params={"url": url, "use_browser": use_browser},
+            timeout=120.0,
+        )
+        response.raise_for_status()
+        return response.json()
+    except httpx.RequestError as e:
+        st.error(f"Erro ao conectar ao backend: {str(e)}")
+        return None
+    except httpx.HTTPStatusError as e:
+        st.error(f"Erro HTTP ao acessar o backend: {str(e)}")
+        return None
+
+
 def main():
     # Set page configuration
     st.set_page_config(layout="wide", page_title="ERP Pessoal - Dignidade Financeira")
@@ -119,6 +137,7 @@ def main():
             "Comparação de Preços",
             "Scanner de Produtos",
             "Analisar Encarte",
+            "Ofertas de Supermercados",
         ],
     )
 
@@ -743,6 +762,139 @@ def main():
                                 "Nenhum produto do encarte encontrado no seu histórico de compras. "
                                 "Importe algumas notas fiscais desses produtos primeiro!"
                             )
+
+    elif page == "Ofertas de Supermercados":
+        st.header("🛒 Ofertas de Supermercados")
+        st.markdown("Compare preços de promoções online com seu histórico de compras")
+
+        # Markets available
+        MARKETS = {
+            "Supermercados Real": "https://www2.supermercadosreal.com.br/loja",
+            "Rede Supermarket": "https://redesupermarket.com.br/ofertas/",
+        }
+
+        # Select market
+        selected_market = st.selectbox(
+            "Selecione o supermercado:",
+            options=list(MARKETS.keys()),
+            index=0,
+        )
+
+        # Get URL for selected market
+        url = MARKETS.get(selected_market, "")
+
+        # Show selected URL (read-only)
+        st.text_input(
+            "URL:",
+            value=url,
+            disabled=True,
+            help="URL que será analisada",
+        )
+
+        # Options
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown(f"**Mercado selecionado:** {selected_market}")
+        with col2:
+            use_browser = st.checkbox(
+                "Usar browser (para sites com JavaScript)",
+                value=False,
+                help="Marque apenas se as ofertas não aparecerem. Alguns sites bloqueiam requisições diretas.",
+            )
+
+        # Analyze button
+        if st.button("🔍 Analisar Ofertas", type="primary"):
+            with st.spinner("Analisando ofertas..."):
+                results = analyze_url(url, use_browser)
+
+                if results:
+                    # Separate deals and non-deals
+                    deals = [r for r in results if r.get("is_deal")]
+                    not_deals = [r for r in results if not r.get("is_deal")]
+
+                    st.success(f"Encontradas {len(results)} ofertas!")
+
+                    # Summary
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Total Ofertas", len(results))
+                    with col2:
+                        st.metric("🔥 Promoção", len(deals))
+                    with col3:
+                        total_savings = sum(
+                            r["base_avg_price"] - r["offer_price"]
+                            for r in deals
+                            if r.get("base_avg_price") and r.get("offer_price")
+                        )
+                        st.metric("💰 Economia Máx", f"R$ {total_savings:.2f}")
+
+                    # Show deals
+                    if deals:
+                        st.markdown("### 🔥 Ofertas Imperdíveis!")
+                        for deal in deals:
+                            savings = deal["base_avg_price"] - deal["offer_price"]
+                            percent = (
+                                (savings / deal["base_avg_price"]) * 100
+                                if deal["base_avg_price"] > 0
+                                else 0
+                            )
+                            discount = deal.get("discount_percent", 0)
+
+                            st.markdown(
+                                f"""
+                                <div style="background-color: #d4edda; padding: 15px; border-radius: 8px; margin: 8px 0; border-left: 5px solid #28a745;">
+                                    <strong style="font-size: 16px;">{deal["product_name"]}</strong><br>
+                                    <span style="color: #155724;">
+                                        💰 <strong>Oferta: R$ {deal["offer_price"]:.2f}</strong> 
+                                        | 📊 Média anterior: R$ {deal["base_avg_price"]:.2f}<br>
+                                        🎉 Economia: <strong>R$ {savings:.2f} ({percent:.1f}%)</strong>
+                                        {f" | 🏷️ Desconto do site: {discount}%" if discount else ""}
+                                    </span>
+                                </div>
+                                """,
+                                unsafe_allow_html=True,
+                            )
+
+                    # Show non-deals
+                    if not_deals:
+                        with st.expander(f"ℹ️ Outros produtos ({len(not_deals)})"):
+                            for item in not_deals:
+                                st.markdown(
+                                    f"""
+                                    <div style="background-color: #f8f9fa; padding: 10px; border-radius: 5px; margin: 5px 0;">
+                                        <strong>{item["product_name"]}</strong><br>
+                                        💰 R$ {item["offer_price"]:.2f} | 
+                                        📊 Média: R$ {item["base_avg_price"]:.2f}
+                                    </div>
+                                    """,
+                                    unsafe_allow_html=True,
+                                )
+
+                    # Details table
+                    st.markdown("### 📋 Detalhes")
+                    df = pd.DataFrame(results)
+                    st.dataframe(df, use_container_width=True)
+
+                elif results == []:
+                    st.warning(
+                        "Nenhuma oferta encontrada ou nenhum produto do site encontrado no seu histórico."
+                    )
+                else:
+                    st.error(
+                        "Erro ao analisar URL. Verifique se o backend está rodando."
+                    )
+
+        # Help
+        with st.expander("ℹ️ Como usar"):
+            st.markdown("""
+            **Passos:**
+            1. Copie a URL da página de ofertas do supermercado
+            2. Cole no campo acima
+            3. Clique em "Analisar Ofertas"
+            4. Veja quais produtos estão com preço melhor que sua média de compras
+            
+            **Dica:** Alguns sites usam JavaScript. Marque "Usar browser" se as ofertas não aparecerem.
+            """)
 
 
 if __name__ == "__main__":

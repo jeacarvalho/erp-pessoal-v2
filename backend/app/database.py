@@ -1,10 +1,14 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 import os
+from typing import Generator
 
-# Use a default in-memory database for testing unless otherwise specified
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///:memory:")
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
+
+DATABASE_URL: str = (
+    os.getenv("DATABASE_URL")
+    or f"sqlite+pysqlite:///{os.getenv('SQLITE_DB_PATH', '../data/sqlite/app.db')}"
+)
 
 engine = create_engine(
     DATABASE_URL,
@@ -13,4 +17,13 @@ engine = create_engine(
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Base is defined in models.py
+
+def get_db() -> Generator[Session, None, None]:
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+__all__ = ["engine", "SessionLocal", "get_db", "DATABASE_URL"]
