@@ -406,6 +406,8 @@ test(api): adiciona teste de integração
 - **OCR easyocr**: Precisa converter PIL Image para numpy array antes de passar para `reader.readtext()` - passando objeto Image diretamente causa erro
 - **Parser de encartes**: Encartes têm múltiplas colunas (produto na esquerda, preço na direita) - usar coordenadas X/Y para parear corretamente
 - **Fuzzy matching**: Nomes de produtos do encarte raramente batem exatamente com a base - usar similaridade de palavras-chave em vez de contains
+- **Database URL em produção**: Sempre usar `sqlite+pysqlite:///caminho/absoluto` ou variável `DATABASE_URL` - não usar `sqlite:///:memory:` que é apenas para testes
+- **Scraping sites**: Alguns sites bloqueiam requisições diretas (retornam 520) - usar `BrowserHTMLFetcher` com Playwright para renderizar JavaScript
 
 ### Novos Endpoints (2026-02-25)
 - `GET /analytics/sellers` - Lista todos os vendedores únicos
@@ -419,6 +421,14 @@ test(api): adiciona teste de integração
 - Suporta imagens (PNG, JPG, JPEG, WebP) e PDF
 - Retorna lista de ofertas com comparação de preços
 
+### Sistema de Scraping de Promoções (2026-02-26)
+- `POST /analytics/analyze-url` - Analisa URL de promoções de supermercados e compara com preços históricos
+- Arquitetura desacoplada: `PriceComparator` (lógica de comparação) separado de `PromotionScraper` (captura de ofertas)
+- Scraper para Supermercados Real (MercaFacilScraper) e Rede Supermarket (RedeSupermarketScraper)
+- Extensível: novos scrapers podem ser adicionados facilmente
+- Fuzzy matching para encontrar produtos similares na base (não exato)
+- Frontend Streamlit com combobox para selecionar supermercado
+
 ---
 
-**Última atualização**: 2026-02-25
+**Última atualização**: 2026-02-26
