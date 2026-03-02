@@ -1,53 +1,23 @@
+```
 # Python
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-*.egg-info/
-dist/
-build/
-*.egg
-.coverage
-.pytest_cache/
-.coverage.*
-htmlcov/
-.tox/
-.venv
+*.pyc
+*.pyo
+*.pyd
+*.db
+
+# Dependencies
 venv/
-
-# Dados
-data/*.db
-data/*.sqlite
-data/*.json
-!data/.gitkeep
-
-# Node/Mobile
-node_modules/
-dist/
+.venv/
 .env
 .env.local
-!.env.production
+*.env.*
 
-# Android
-android/app/build/
-android/.gradle/
-*.apk
-*.aab
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
+# Logs and temp files
 *.log
+*.tmp
 
-# SSL certificates
-ssl/
-
+# Editors
+.vscode/
+.idea/
+```

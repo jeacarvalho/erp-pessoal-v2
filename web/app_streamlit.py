@@ -181,6 +181,11 @@ def main():
             "Ou faça upload de arquivos XML:", type=["xml"], accept_multiple_files=True
         )
 
+        # File uploader for HTML
+        html_file = st.file_uploader(
+            "Ou faça upload de arquivo HTML da NFC-e:", type=["html"]
+        )
+
         # Import button
         import_button = st.button("Importar")
 
@@ -192,6 +197,37 @@ def main():
                         import_payload = {"url": url, "use_browser": use_browser}
                         response = httpx.post(
                             f"{BACKEND_URL}/import/url", json=import_payload
+                        )
+
+                        if response.status_code == 200:
+                            result = response.json()
+                            st.success(f"Nota fiscal importada com sucesso!")
+                            st.write(f"ID da Nota: {result['note_id']}")
+                            st.write(f"Quantidade de Itens: {result['items_count']}")
+                            st.write(f"Estabelecimento: {result['seller_name']}")
+                            st.write(f"Valor Total: R$ {result['total_amount']:.2f}")
+                        else:
+                            st.error(
+                                f"Erro na importação: {response.status_code} - {response.text}"
+                            )
+                    except Exception as e:
+                        st.error(f"Erro ao conectar ao backend: {str(e)}")
+
+            elif html_file:
+                with st.spinner("Importando dados do HTML..."):
+                    try:
+                        # Prepare file for upload
+                        files = {
+                            "file": (
+                                html_file.name,
+                                html_file.getvalue(),
+                                "text/html",
+                            )
+                        }
+
+                        # Call backend API for HTML import
+                        response = httpx.post(
+                            f"{BACKEND_URL}/import/html", files=files
                         )
 
                         if response.status_code == 200:
@@ -249,7 +285,7 @@ def main():
                             )
             else:
                 st.warning(
-                    "Por favor, insira uma URL ou faça upload de um ou mais arquivos XML."
+                    "Por favor, insira uma URL, faça upload de um arquivo HTML ou de um ou mais arquivos XML."
                 )
 
     elif page == "Histórico de Preços (Inflação)":

@@ -83,6 +83,70 @@ export const importNoteFromUrl = async (url: string): Promise<FiscalNoteResponse
   }
 };
 
+export const importNoteFromHtml = async (file: File): Promise<FiscalNoteResponse> => {
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const fullUrl = `${API_URL}/import/html`;
+    console.log('[API] POST to:', fullUrl);
+    console.log('[API] FormData size:', formData.get('file')?.size);
+
+    const response = await api.post<FiscalNoteResponse>('/import/html', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      }
+    });
+    console.log('[API] Response:', response.data);
+    return response.data;
+  } catch (error) {
+    console.error('[API] Error importing HTML:', error);
+    
+    if (axios.isAxiosError(error)) {
+      console.error('[API] Axios Error - code:', error.code);
+      console.error('[API] Axios Error - message:', error.message);
+      console.error('[API] Axios Error - response:', error.response);
+      console.error('[API] Axios Error - request:', error.request);
+      
+      if (error.response) {
+        switch (error.response.status) {
+          case 409:
+            throw new Error('Nota fiscal já importada anteriormente.');
+          case 422:
+            throw new Error('Conteúdo HTML inválido ou não suportado.');
+          case 400:
+            throw new Error('Arquivo inválido.');
+          case 404:
+            throw new Error('Endpoint não encontrado.');
+          case 500:
+            throw new Error('Erro interno do servidor.');
+          case 504:
+            throw new Error('Tempo limite excedido.');
+          default:
+            throw new Error(`Erro: ${error.response.status} - ${error.response.statusText}`);
+        }
+      } else if (error.request) {
+        const isNetworkError = 
+          error.code === 'ERR_NETWORK' || 
+          error.code === 'ECONNABORTED' ||
+          error.message.includes('Network Error');
+        
+        if (isNetworkError) {
+          throw new Error('Sem conexão. Falha ao importar arquivo HTML.');
+        }
+        
+        const errorMsg = `Falha na conexão com ${API_URL}. Código: ${error.code}. Verifique a rede.`;
+        console.error('[API]', errorMsg);
+        throw new Error(errorMsg);
+      } else {
+        throw new Error('Erro ao configurar requisição: ' + error.message);
+      }
+    } else {
+      throw new Error('Erro inesperado: ' + (error instanceof Error ? error.message : String(error)));
+    }
+  }
+};
+
 export const syncOfflineNotes = async (): Promise<{ success: number; failed: number }> => {
   const offlineNotes = getOfflineNotes();
   
