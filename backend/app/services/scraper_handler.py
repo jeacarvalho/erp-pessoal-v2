@@ -1033,6 +1033,26 @@ class ScraperImporter:
         self._ensure_backup_directory()
         self._load_processed_urls_from_backup()
 
+    def import_from_html_content(
+        self,
+        html_content: str,
+        *,
+        adapter_key: str = "default"
+    ) -> ParsedNote:
+        """Faz o parsing de conteúdo HTML diretamente e retorna uma `ParsedNote`."""
+        
+        key = adapter_key
+        adapter_cls = self._adapters.get(key, DefaultSefazAdapter)
+        adapter = adapter_cls()
+        
+        if _looks_like_sefaz_block_page(html_content):
+            raise ValueError(
+                "O conteúdo HTML fornecido parece ser uma página de bloqueio da SEFAZ."
+            )
+            
+        result = adapter.parse(html_content)
+        return result
+
     def _ensure_backup_directory(self) -> None:
         """Ensure the backup directory exists."""
         backup_dir = os.path.dirname(self.backup_file_path)

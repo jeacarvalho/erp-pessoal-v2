@@ -365,6 +365,36 @@ def import_url(
     }
 
 
+@app.post("/import/html")
+async def import_html(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Importa uma nota a partir de um arquivo HTML contendo o conteúdo da página da NFC-e."""
+    
+    content = await file.read()
+    html_content = content.decode("utf-8")
+    
+    importer = ScraperImporter()
+    try:
+        parsed = importer.import_from_html_content(html_content)
+    except ValueError as exc:
+        # Erros de parsing/scraping são retornados como 422 para o cliente.
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    note = _persist_parsed_note(parsed, FiscalSourceType.SCRAPING, db)
+
+    return {
+        "note_id": note.id,
+        "items_count": len(parsed.items),
+        "seller_name": note.seller_name,
+        "total_amount": note.total_amount,
+    }
+
+
 @app.post("/import/restore-from-backup")
 def restore_from_backup(db: Session = Depends(get_db)) -> dict:
     """Restaura todas as notas a partir do arquivo de backup de URLs processadas."""
